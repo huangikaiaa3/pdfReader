@@ -1,0 +1,2 @@
+"""Health response schemas."""
+
