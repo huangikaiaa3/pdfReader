@@ -1,0 +1,81 @@
+"""Document upload workflow services."""
+
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import HTTPException, UploadFile, status
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.db.models import Document, DocumentVersion, IngestionJob
+from app.schemas.document import DocumentUploadResponse
+
+
+def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
+    """Persist an uploaded PDF and create its initial ingestion records."""
+
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF uploads are supported.")
+
+    original_filename = file.filename or "uploaded.pdf"
+    file_bytes = file.file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
+
+    document_id = uuid4()
+    document_version_id = uuid4()
+    ingestion_job_id = uuid4()
+
+    storage_path = _store_uploaded_pdf(document_version_id=document_version_id, file_bytes=file_bytes)
+    sha256 = hashlib.sha256(file_bytes).hexdigest()
+    file_size_bytes = len(file_bytes)
+
+    document = Document(
+        id=document_id,
+        title=original_filename,
+        source_type="upload",
+    )
+    document_version = DocumentVersion(
+        id=document_version_id,
+        document_id=document_id,
+        original_filename=original_filename,
+        storage_path=str(storage_path),
+        sha256=sha256,
+        file_size_bytes=file_size_bytes,
+        mime_type=file.content_type,
+        page_count=None,
+        extraction_status="pending",
+    )
+    ingestion_job = IngestionJob(
+        id=ingestion_job_id,
+        document_version_id=document_version_id,
+        job_type="extract_text",
+        status="pending",
+        attempt_count=1,
+    )
+
+    db.add(document)
+    db.add(document_version)
+    db.add(ingestion_job)
+    db.commit()
+
+    return DocumentUploadResponse(
+        document_id=document_id,
+        document_version_id=document_version_id,
+        ingestion_job_id=ingestion_job_id,
+        extraction_status=document_version.extraction_status,
+    )
+
+
+def _store_uploaded_pdf(document_version_id, file_bytes: bytes) -> Path:
+    """Write the uploaded PDF to local storage and return its path."""
+
+    settings = get_settings()
+    documents_dir = Path(settings.storage_root) / "documents"
+    documents_dir.mkdir(parents=True, exist_ok=True)
+    storage_path = documents_dir / f"{document_version_id}.pdf"
+    storage_path.write_bytes(file_bytes)
+    return storage_path

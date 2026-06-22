@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     environment: str = "local"
     database_url: str
     redis_url: str
+    storage_root: str = "storage"
 
     model_config = SettingsConfigDict(
         env_file=".env",
