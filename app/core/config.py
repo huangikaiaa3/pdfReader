@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     redis_url: str
     storage_root: str = "storage"
     ingestion_queue_name: str = "ingestion_jobs"
+    ingestion_event_channel: str = "ingestion_events"
 
     model_config = SettingsConfigDict(
         env_file=".env",

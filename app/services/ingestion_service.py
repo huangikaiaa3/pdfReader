@@ -9,6 +9,7 @@ from uuid import UUID
 from app.db.models import DocumentPage, DocumentVersion, IngestionJob
 from app.db.session import SessionLocal
 from app.services.extraction_service import extract_pdf_text
+from app.services.queue_service import publish_ingestion_event
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,16 @@ def process_extraction_job(ingestion_job_id: UUID | str) -> None:
         document_version.extraction_status = "running"
         db.commit()
         logger.info("Ingestion job %s marked running", ingestion_job_id)
+        publish_ingestion_event(
+            {
+                "event": "extraction_status",
+                "document_version_id": str(document_version.id),
+                "ingestion_job_id": str(ingestion_job.id),
+                "status": "running",
+                "page_count": document_version.page_count,
+                "error_message": None,
+            }
+        )
 
         extraction_result = extract_pdf_text(document_version.storage_path)
         document_version.page_count = extraction_result["page_count"]
@@ -74,6 +85,16 @@ def process_extraction_job(ingestion_job_id: UUID | str) -> None:
 
         ingestion_job.finished_at = datetime.now(timezone.utc)
         db.commit()
+        publish_ingestion_event(
+            {
+                "event": "extraction_status",
+                "document_version_id": str(document_version.id),
+                "ingestion_job_id": str(ingestion_job.id),
+                "status": document_version.extraction_status,
+                "page_count": extraction_result["page_count"],
+                "error_message": ingestion_job.error_message,
+            }
+        )
     except Exception as exc:
         ingestion_job = db.query(IngestionJob).filter(IngestionJob.id == ingestion_job_id).first()
         if ingestion_job is not None:
@@ -85,6 +106,16 @@ def process_extraction_job(ingestion_job_id: UUID | str) -> None:
             if document_version is not None:
                 document_version.extraction_status = "failed"
             db.commit()
+            publish_ingestion_event(
+                {
+                    "event": "extraction_status",
+                    "document_version_id": str(ingestion_job.document_version_id),
+                    "ingestion_job_id": str(ingestion_job.id),
+                    "status": "failed",
+                    "page_count": None,
+                    "error_message": str(exc),
+                }
+            )
         logger.exception("Ingestion job %s crashed", ingestion_job_id)
     finally:
         db.close()

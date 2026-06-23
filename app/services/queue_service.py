@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 from redis import Redis
@@ -22,3 +23,11 @@ def enqueue_ingestion_job(ingestion_job_id: UUID) -> None:
     settings = get_settings()
     client = get_redis_client()
     client.rpush(settings.ingestion_queue_name, str(ingestion_job_id))
+
+
+def publish_ingestion_event(payload: dict) -> None:
+    """Publish an ingestion event for SSE consumers."""
+
+    settings = get_settings()
+    client = get_redis_client()
+    client.publish(settings.ingestion_event_channel, json.dumps(payload))
