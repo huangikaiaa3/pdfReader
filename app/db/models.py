@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,8 +46,28 @@ class DocumentVersion(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     document: Mapped[Document] = relationship(back_populates="versions")
+    pages: Mapped[list["DocumentPage"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
     ingestion_jobs: Mapped[list["IngestionJob"]] = relationship(
         back_populates="document_version", cascade="all, delete-orphan"
+    )
+
+
+class DocumentPage(Base):
+    """Extracted text for a single page of a document version."""
+
+    __tablename__ = "document_pages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    document_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_versions.id"), nullable=False, index=True)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    document_version: Mapped[DocumentVersion] = relationship(back_populates="pages")
+
+    __table_args__ = (
+        sa.UniqueConstraint("document_version_id", "page_number", name="uq_document_pages_version_page"),
     )
 
 
