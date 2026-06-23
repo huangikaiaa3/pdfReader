@@ -25,12 +25,16 @@ def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
     if not file_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
 
+    sha256 = hashlib.sha256(file_bytes).hexdigest()
+    existing_document_version = _get_existing_document_version(db=db, sha256=sha256)
+    if existing_document_version is not None:
+        return _build_duplicate_upload_response(db=db, document_version=existing_document_version)
+
     document_id = uuid4()
     document_version_id = uuid4()
     ingestion_job_id = uuid4()
 
     storage_path = _store_uploaded_pdf(document_version_id=document_version_id, file_bytes=file_bytes)
-    sha256 = hashlib.sha256(file_bytes).hexdigest()
     file_size_bytes = len(file_bytes)
 
     document = Document(
@@ -79,3 +83,35 @@ def _store_uploaded_pdf(document_version_id, file_bytes: bytes) -> Path:
     storage_path = documents_dir / f"{document_version_id}.pdf"
     storage_path.write_bytes(file_bytes)
     return storage_path
+
+
+def _get_existing_document_version(db: Session, sha256: str) -> DocumentVersion | None:
+    """Return an existing document version for the given checksum, if one exists."""
+
+    return db.query(DocumentVersion).filter(DocumentVersion.sha256 == sha256).first()
+
+
+def _build_duplicate_upload_response(db: Session, document_version: DocumentVersion) -> DocumentUploadResponse:
+    """Return the existing upload response for a duplicate file upload."""
+
+    ingestion_job = (
+        db.query(IngestionJob)
+        .filter(
+            IngestionJob.document_version_id == document_version.id,
+            IngestionJob.job_type == "extract_text",
+        )
+        .order_by(IngestionJob.created_at.desc())
+        .first()
+    )
+    if ingestion_job is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Duplicate upload found without an ingestion job.",
+        )
+
+    return DocumentUploadResponse(
+        document_id=document_version.document_id,
+        document_version_id=document_version.id,
+        ingestion_job_id=ingestion_job.id,
+        extraction_status=document_version.extraction_status,
+    )
