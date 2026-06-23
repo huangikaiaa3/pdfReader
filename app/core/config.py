@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     storage_root: str = "storage"
+    ingestion_queue_name: str = "ingestion_jobs"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import Document, DocumentVersion, IngestionJob
 from app.schemas.document import DocumentUploadResponse
+from app.services.queue_service import enqueue_ingestion_job
 
 
 def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
@@ -65,6 +66,7 @@ def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
     db.add(document_version)
     db.add(ingestion_job)
     db.commit()
+    enqueue_ingestion_job(ingestion_job_id)
 
     return DocumentUploadResponse(
         document_id=document_id,
