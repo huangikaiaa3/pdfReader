@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     storage_root: str = "storage"
     ingestion_queue_name: str = "ingestion_jobs"
     ingestion_event_channel: str = "ingestion_events"
+    gemini_api_key: str | None = None
+    embedding_model: str = "gemini-embedding-2"
+    embedding_output_dimensionality: int = 768
 
     model_config = SettingsConfigDict(
         env_file=".env",
