@@ -17,12 +17,12 @@ from app.services.queue_service import get_redis_client
 
 router = APIRouter(tags=["document-events"])
 
-TERMINAL_STATUSES = {"succeeded", "failed"}
+TERMINAL_STATUSES = {"ready", "failed"}
 
 
 @router.get("/document-versions/{document_version_id}/events")
 def stream_document_version_events(document_version_id: UUID) -> StreamingResponse:
-    """Stream extraction status events for a specific document version."""
+    """Stream pipeline status events for a specific document version."""
 
     def event_stream() -> Iterator[str]:
         db = SessionLocal()
@@ -35,7 +35,7 @@ def stream_document_version_events(document_version_id: UUID) -> StreamingRespon
             if current_version is None:
                 yield _format_sse(
                     {
-                        "event": "extraction_status",
+                        "event": "pipeline_status",
                         "document_version_id": str(document_version_id),
                         "ingestion_job_id": "",
                         "status": "failed",
@@ -54,7 +54,7 @@ def stream_document_version_events(document_version_id: UUID) -> StreamingRespon
             if current_job is None:
                 yield _format_sse(
                     {
-                        "event": "extraction_status",
+                        "event": "pipeline_status",
                         "document_version_id": str(document_version_id),
                         "ingestion_job_id": "",
                         "status": "failed",
@@ -65,7 +65,7 @@ def stream_document_version_events(document_version_id: UUID) -> StreamingRespon
                 return
 
             initial_payload = _build_event_payload(current_version, current_job)
-            if current_version.extraction_status in TERMINAL_STATUSES:
+            if current_version.pipeline_status in TERMINAL_STATUSES:
                 yield _format_sse(initial_payload)
                 return
 
@@ -102,10 +102,10 @@ def _build_event_payload(document_version: DocumentVersion, ingestion_job: Inges
     """Build the current SSE payload from database state."""
 
     return {
-        "event": "extraction_status",
+        "event": "pipeline_status",
         "document_version_id": str(document_version.id),
         "ingestion_job_id": str(ingestion_job.id),
-        "status": document_version.extraction_status,
+        "status": document_version.pipeline_status,
         "page_count": document_version.page_count,
         "error_message": ingestion_job.error_message,
     }

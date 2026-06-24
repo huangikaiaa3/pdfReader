@@ -11,4 +11,4 @@ class DocumentUploadResponse(BaseModel):
     document_id: UUID
     document_version_id: UUID
     ingestion_job_id: UUID
-    extraction_status: str
+    pipeline_status: str

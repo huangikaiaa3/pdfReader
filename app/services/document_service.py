@@ -52,7 +52,7 @@ def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
         file_size_bytes=file_size_bytes,
         mime_type=file.content_type,
         page_count=None,
-        extraction_status="pending",
+        pipeline_status="pending",
     )
     ingestion_job = IngestionJob(
         id=ingestion_job_id,
@@ -72,7 +72,7 @@ def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
         document_id=document_id,
         document_version_id=document_version_id,
         ingestion_job_id=ingestion_job_id,
-        extraction_status=document_version.extraction_status,
+        pipeline_status=document_version.pipeline_status,
     )
 
 
@@ -115,5 +115,5 @@ def _build_duplicate_upload_response(db: Session, document_version: DocumentVers
         document_id=document_version.document_id,
         document_version_id=document_version.id,
         ingestion_job_id=ingestion_job.id,
-        extraction_status=document_version.extraction_status,
+        pipeline_status=document_version.pipeline_status,
     )

@@ -38,15 +38,15 @@ def process_extraction_job(ingestion_job_id: UUID | str) -> None:
         ingestion_job.status = "running"
         ingestion_job.started_at = datetime.now(timezone.utc)
         ingestion_job.error_message = None
-        document_version.extraction_status = "running"
+        document_version.pipeline_status = "extracting"
         db.commit()
         logger.info("Ingestion job %s marked running", ingestion_job_id)
         publish_ingestion_event(
             {
-                "event": "extraction_status",
+                "event": "pipeline_status",
                 "document_version_id": str(document_version.id),
                 "ingestion_job_id": str(ingestion_job.id),
-                "status": "running",
+                "status": "extracting",
                 "page_count": document_version.page_count,
                 "error_message": None,
             }
@@ -64,7 +64,7 @@ def process_extraction_job(ingestion_job_id: UUID | str) -> None:
                     char_count=page["char_count"],
                 )
                 db.add(document_page)
-            document_version.extraction_status = "succeeded"
+            document_version.pipeline_status = "ready"
             ingestion_job.status = "succeeded"
             ingestion_job.error_message = None
             logger.info(
@@ -74,7 +74,7 @@ def process_extraction_job(ingestion_job_id: UUID | str) -> None:
                 extraction_result["total_char_count"],
             )
         else:
-            document_version.extraction_status = "failed"
+            document_version.pipeline_status = "failed"
             ingestion_job.status = "failed"
             ingestion_job.error_message = extraction_result["message"]
             logger.warning(
@@ -87,10 +87,10 @@ def process_extraction_job(ingestion_job_id: UUID | str) -> None:
         db.commit()
         publish_ingestion_event(
             {
-                "event": "extraction_status",
+                "event": "pipeline_status",
                 "document_version_id": str(document_version.id),
                 "ingestion_job_id": str(ingestion_job.id),
-                "status": document_version.extraction_status,
+                "status": document_version.pipeline_status,
                 "page_count": extraction_result["page_count"],
                 "error_message": ingestion_job.error_message,
             }
@@ -104,11 +104,11 @@ def process_extraction_job(ingestion_job_id: UUID | str) -> None:
             ingestion_job.finished_at = datetime.now(timezone.utc)
             document_version = db.query(DocumentVersion).filter(DocumentVersion.id == ingestion_job.document_version_id).first()
             if document_version is not None:
-                document_version.extraction_status = "failed"
+                document_version.pipeline_status = "failed"
             db.commit()
             publish_ingestion_event(
                 {
-                    "event": "extraction_status",
+                    "event": "pipeline_status",
                     "document_version_id": str(ingestion_job.document_version_id),
                     "ingestion_job_id": str(ingestion_job.id),
                     "status": "failed",
