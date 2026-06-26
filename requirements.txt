@@ -10,3 +10,4 @@ pypdf==5.6.0
 cryptography==45.0.4
 redis==5.2.1
 google-genai==2.10.0
+pgvector

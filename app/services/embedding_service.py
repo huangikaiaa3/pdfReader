@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from google import genai
 from google.genai import types
 
@@ -34,7 +32,7 @@ def build_chunk_embedding_payloads(document_version: DocumentVersion, document_c
                 "document_chunk_id": document_chunk.id,
                 "embedding_model": settings.embedding_model,
                 "dimensions": len(values),
-                "vector": json.dumps(values),
+                "vector": values,
             }
         )
 
