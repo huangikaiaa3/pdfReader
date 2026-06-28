@@ -121,7 +121,7 @@ Columns:
 - `document_chunk_id`: `UUID`, foreign key to `document_chunks.id`, not null
 - `embedding_model`: `TEXT`, not null
 - `dimensions`: `INTEGER`, not null
-- `vector`: `TEXT`, not null
+- `vector`: `VECTOR(768)`, not null
 - `created_at`: `TIMESTAMPTZ`, not null
 - `updated_at`: `TIMESTAMPTZ`, not null
 
@@ -131,8 +131,8 @@ Indexes / constraints:
 
 Notes:
 - a separate embeddings table allows re-embedding chunks with different models later.
-- `vector` is currently stored as serialized text.
-- this can migrate to a vector-native type later if needed.
+- embeddings are stored with the PostgreSQL `pgvector` extension.
+- the current dimensionality is 768 for `gemini-embedding-2`.
 
 ## ingestion_jobs
 
@@ -169,6 +169,7 @@ Notes:
 - this table is append-mostly.
 - each row represents one stage attempt, not one permanent pipeline slot.
 - a row may be updated during its own lifecycle, but retries should create a new row.
+- retries increment `attempt_count` on a new row for the same `job_type`.
 - the frontend should not treat `ingestion_job_id` as the stable document lifecycle identifier.
 
 ## Relationships
@@ -194,6 +195,5 @@ Everything else in this current pass is not null.
 The following are intentionally out of scope for this schema pass:
 - conversation and message tables
 - OCR-specific fields
-- retry orchestration tables
 - richer extraction quality metrics
 - business constraints that depend on unresolved product behavior

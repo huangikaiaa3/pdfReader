@@ -92,6 +92,12 @@ Fields:
 8. Enqueue extraction work.
 9. Return the response immediately.
 
+### Duplicate upload behavior
+
+- Upload deduplication is checksum-based.
+- If the same PDF bytes are uploaded again, the API returns the existing `document_version_id`.
+- The API does not create a second stored file or a duplicate pipeline for the same checksum.
+
 ## Local Storage
 
 The current implementation uses local filesystem storage.
@@ -200,6 +206,35 @@ event: pipeline_status
 data: {"document_version_id":"...","status":"failed","error_message":"text extraction failed"}
 ```
 
+## Recovery Endpoint
+
+### Route
+
+`POST /document-versions/{document_version_id}/recover`
+
+### Purpose
+
+This endpoint requeues the next missing ingestion stage based on persisted database state.
+
+### Behavior
+
+- If no extracted pages exist, it enqueues `extract_text`.
+- If pages exist but no chunks exist, it enqueues `chunk_text`.
+- If chunks exist but embeddings are missing, it enqueues `build_embeddings`.
+- If the document version is already complete, it returns a no-op response.
+- If an active pending or running job already exists for the required stage, it returns that job instead of creating another one.
+
+### Response shape
+
+```json
+{
+  "document_version_id": "uuid",
+  "ingestion_job_id": "uuid-or-null",
+  "pipeline_status": "embedding",
+  "message": "Enqueued recovery job for stage 'build_embeddings'."
+}
+```
+
 ## Backend Event Flow
 
 1. Upload API enqueues an `extract_text` job.
@@ -220,11 +255,19 @@ data: {"document_version_id":"...","status":"failed","error_message":"text extra
 - SSE provides near-real-time notification to the frontend.
 - If an SSE event is missed, the database remains the recovery source of truth.
 
+## Re-run and Retry Rules
+
+- Each stage is idempotent at the artifact level.
+- Re-running `extract_text` replaces downstream pages, chunks, and embeddings for that document version.
+- Re-running `chunk_text` replaces downstream chunks and embeddings for that document version.
+- Re-running `build_embeddings` replaces embeddings for the existing chunks of that document version.
+- Retry attempts create a new `ingestion_jobs` row with an incremented `attempt_count`.
+- Automatic retries are only used for retryable runtime failures, not for known terminal states such as unreadable extraction output.
+
 ## Deferred Details
 
 The following are intentionally not finalized yet:
-- retry policy
 - reconnect behavior for SSE clients
-- a dedicated recovery or requeue flow
-- idempotent re-run safeguards for every stage
 - whether a separate status endpoint should exist alongside SSE
+- richer backoff and retry timing
+- stronger stuck-job detection

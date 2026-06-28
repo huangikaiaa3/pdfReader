@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import Document, DocumentVersion, IngestionJob
-from app.schemas.document import DocumentUploadResponse
+from app.schemas.document import DocumentRecoveryResponse, DocumentUploadResponse
 from app.services.queue_service import enqueue_ingestion_job
 
 
@@ -116,4 +116,19 @@ def _build_duplicate_upload_response(db: Session, document_version: DocumentVers
         document_version_id=document_version.id,
         ingestion_job_id=ingestion_job.id,
         pipeline_status=document_version.pipeline_status,
+    )
+
+
+def build_recovery_response(
+    document_version: DocumentVersion,
+    ingestion_job: IngestionJob | None,
+    message: str,
+) -> DocumentRecoveryResponse:
+    """Build a response describing the next recovery action."""
+
+    return DocumentRecoveryResponse(
+        document_version_id=document_version.id,
+        ingestion_job_id=ingestion_job.id if ingestion_job is not None else None,
+        pipeline_status=document_version.pipeline_status,
+        message=message,
     )

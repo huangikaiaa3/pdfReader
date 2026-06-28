@@ -12,3 +12,12 @@ class DocumentUploadResponse(BaseModel):
     document_version_id: UUID
     ingestion_job_id: UUID
     pipeline_status: str
+
+
+class DocumentRecoveryResponse(BaseModel):
+    """Response schema for a document-version recovery request."""
+
+    document_version_id: UUID
+    ingestion_job_id: UUID | None
+    pipeline_status: str
+    message: str
