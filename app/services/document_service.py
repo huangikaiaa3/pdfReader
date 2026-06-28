@@ -7,11 +7,18 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Document, DocumentVersion, IngestionJob
-from app.schemas.document import DocumentRecoveryResponse, DocumentUploadResponse
+from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentVersion, IngestionJob
+from app.schemas.document import (
+    DocumentArtifactCountsResponse,
+    DocumentRecoveryResponse,
+    DocumentUploadResponse,
+    DocumentVersionStatusResponse,
+    LatestIngestionJobResponse,
+)
 from app.services.queue_service import enqueue_ingestion_job
 
 
@@ -131,4 +138,69 @@ def build_recovery_response(
         ingestion_job_id=ingestion_job.id if ingestion_job is not None else None,
         pipeline_status=document_version.pipeline_status,
         message=message,
+    )
+
+
+def get_document_version_status(db: Session, document_version_id) -> DocumentVersionStatusResponse:
+    """Return the current status snapshot for one document version."""
+
+    document_version = (
+        db.query(DocumentVersion)
+        .join(Document)
+        .filter(DocumentVersion.id == document_version_id)
+        .first()
+    )
+    if document_version is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document version not found.")
+
+    latest_job = (
+        db.query(IngestionJob)
+        .filter(IngestionJob.document_version_id == document_version.id)
+        .order_by(IngestionJob.created_at.desc())
+        .first()
+    )
+    page_count = db.query(func.count(DocumentPage.id)).filter(DocumentPage.document_version_id == document_version.id).scalar() or 0
+    chunk_count = db.query(func.count(DocumentChunk.id)).filter(DocumentChunk.document_version_id == document_version.id).scalar() or 0
+    embedding_count = (
+        db.query(func.count(ChunkEmbedding.id))
+        .join(DocumentChunk, ChunkEmbedding.document_chunk_id == DocumentChunk.id)
+        .filter(DocumentChunk.document_version_id == document_version.id)
+        .scalar()
+        or 0
+    )
+
+    return DocumentVersionStatusResponse(
+        document_id=document_version.document_id,
+        document_version_id=document_version.id,
+        title=document_version.document.title,
+        original_filename=document_version.original_filename,
+        pipeline_status=document_version.pipeline_status,
+        page_count=document_version.page_count,
+        file_size_bytes=document_version.file_size_bytes,
+        mime_type=document_version.mime_type,
+        created_at=document_version.created_at.isoformat(),
+        updated_at=document_version.updated_at.isoformat(),
+        latest_job=_build_latest_job_response(latest_job),
+        artifact_counts=DocumentArtifactCountsResponse(
+            pages=page_count,
+            chunks=chunk_count,
+            embeddings=embedding_count,
+        ),
+    )
+
+
+def _build_latest_job_response(ingestion_job: IngestionJob | None) -> LatestIngestionJobResponse | None:
+    """Convert the latest ingestion job into a response payload."""
+
+    if ingestion_job is None:
+        return None
+
+    return LatestIngestionJobResponse(
+        ingestion_job_id=ingestion_job.id,
+        job_type=ingestion_job.job_type,
+        status=ingestion_job.status,
+        attempt_count=ingestion_job.attempt_count,
+        error_message=ingestion_job.error_message,
+        started_at=ingestion_job.started_at.isoformat() if ingestion_job.started_at is not None else None,
+        finished_at=ingestion_job.finished_at.isoformat() if ingestion_job.finished_at is not None else None,
     )
