@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DocumentUploadResponse(BaseModel):
@@ -58,3 +58,29 @@ class DocumentVersionStatusResponse(BaseModel):
     updated_at: str
     latest_job: LatestIngestionJobResponse | None
     artifact_counts: DocumentArtifactCountsResponse
+
+
+class DocumentSearchRequest(BaseModel):
+    """Request payload for semantic search within one document version."""
+
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=10)
+
+
+class DocumentSearchMatchResponse(BaseModel):
+    """One retrieved chunk match for a search request."""
+
+    chunk_id: UUID
+    chunk_index: int
+    start_page_number: int
+    end_page_number: int
+    text: str
+    distance: float
+
+
+class DocumentSearchResponse(BaseModel):
+    """Response payload for semantic search results."""
+
+    document_version_id: UUID
+    query: str
+    matches: list[DocumentSearchMatchResponse]
