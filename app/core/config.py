@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     embedding_model: str = "gemini-embedding-2"
     embedding_output_dimensionality: int = 768
     generation_model: str = "gemini-2.5-flash"
+    answer_citation_count: int = 2
+    retrieval_weak_match_max_distance: float = 0.4
 
     model_config = SettingsConfigDict(
         env_file=".env",

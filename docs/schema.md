@@ -127,12 +127,14 @@ Columns:
 
 Indexes / constraints:
 - index on `document_chunk_id`
+- HNSW vector index on `vector` using cosine operations
 - unique constraint on `(document_chunk_id, embedding_model)`
 
 Notes:
 - a separate embeddings table allows re-embedding chunks with different models later.
 - embeddings are stored with the PostgreSQL `pgvector` extension.
 - the current dimensionality is 768 for `gemini-embedding-2`.
+- nearest-neighbor retrieval is now backed by an HNSW index for cosine-distance search.
 
 ## ingestion_jobs
 

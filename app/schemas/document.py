@@ -84,17 +84,30 @@ class DocumentSearchResponse(BaseModel):
     document_version_id: UUID
     query: str
     matches: list[DocumentSearchMatchResponse]
-    
+
+
 class DocumentAskRequest(BaseModel):
     """Request payload for grounded question answering within one document version."""
-    
+
     question: str = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=10)
-    
+
+
+class DocumentCitationResponse(BaseModel):
+    """Citation metadata tying an answer back to document chunk and page ranges."""
+
+    chunk_id: UUID
+    chunk_index: int
+    start_page_number: int
+    end_page_number: int
+
+
 class DocumentAskResponse(BaseModel):
     """Response payload for grounded question answering results."""
-    
+
     document_version_id: UUID
     question: str
+    answer_status: str
     answer: str
+    citations: list[DocumentCitationResponse]
     matches: list[DocumentSearchMatchResponse]
