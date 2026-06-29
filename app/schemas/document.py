@@ -84,3 +84,17 @@ class DocumentSearchResponse(BaseModel):
     document_version_id: UUID
     query: str
     matches: list[DocumentSearchMatchResponse]
+    
+class DocumentAskRequest(BaseModel):
+    """Request payload for grounded question answering within one document version."""
+    
+    question: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=10)
+    
+class DocumentAskResponse(BaseModel):
+    """Response payload for grounded question answering results."""
+    
+    document_version_id: UUID
+    question: str
+    answer: str
+    matches: list[DocumentSearchMatchResponse]

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     embedding_model: str = "gemini-embedding-2"
     embedding_output_dimensionality: int = 768
+    generation_model: str = "gemini-2.5-flash"
 
     model_config = SettingsConfigDict(
         env_file=".env",

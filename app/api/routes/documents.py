@@ -12,10 +12,14 @@ from app.schemas.document import (
     DocumentSearchResponse,
     DocumentUploadResponse,
     DocumentVersionStatusResponse,
+    DocumentAskRequest,
+    DocumentAskResponse
 )
+
 from app.services.document_service import get_document_version_status, upload_document
 from app.services.ingestion_service import recover_document_pipeline
 from app.services.retrieval_service import search_document_chunks
+from app.services.qa_service import ask_document_question
 
 router = APIRouter(tags=["documents"])
 
@@ -46,3 +50,9 @@ def search_document_version_route(document_version_id: UUID, payload: DocumentSe
     """Return the top semantic chunk matches for one document version."""
 
     return search_document_chunks(db=db, document_version_id=document_version_id, query=payload.query, top_k=payload.top_k,)
+
+@router.post("/document-versions/{document_version_id}/ask", response_model=DocumentAskResponse)
+def ask_document_version_route(document_version_id: UUID, payload: DocumentAskRequest, db: Session = Depends(get_db)) -> DocumentAskResponse:
+    """Answer one question using retrieved context from a document version."""
+    
+    return ask_document_question(db=db, document_version_id=document_version_id, question=payload.question, top_k=payload.top_k)
