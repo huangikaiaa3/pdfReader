@@ -1,0 +1,84 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+    command: /app/docker/api/start.sh
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/pdfreader
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_ROOT: /app/storage
+    ports:
+      - "8000:8000"
+    volumes:
+      - document_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+    command: /app/docker/worker/start.sh
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/pdfreader
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_ROOT: /app/storage
+    volumes:
+      - document_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; import sys; cmdline = Path('/proc/1/cmdline').read_text(); sys.exit(0 if 'app.workers.ingestion_worker' in cmdline.replace('\\x00', ' ') else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: pdfreader
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pdfreader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  document_storage:
