@@ -44,6 +44,7 @@ class User(Base):
 
     documents: Mapped[list["Document"]] = relationship(back_populates="owner_user")
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="owner_user", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -84,6 +85,7 @@ class DocumentVersion(Base):
     document: Mapped[Document] = relationship(back_populates="versions")
     pages: Mapped[list["DocumentPage"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
     chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
     ingestion_jobs: Mapped[list["IngestionJob"]] = relationship(
         back_populates="document_version", cascade="all, delete-orphan"
     )
@@ -168,3 +170,37 @@ class IngestionJob(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     document_version: Mapped[DocumentVersion] = relationship(back_populates="ingestion_jobs")
+
+
+class Conversation(Base):
+    """User-owned chat session tied to one document version."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    document_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_versions.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    owner_user: Mapped[User] = relationship(back_populates="conversations")
+    document_version: Mapped[DocumentVersion] = relationship(back_populates="conversations")
+    messages: Mapped[list["ConversationMessage"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
+
+
+class ConversationMessage(Base):
+    """One persisted user or assistant message inside a conversation."""
+
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversations.id"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(50), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    answer_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    citations_json: Mapped[list[dict] | None] = mapped_column(sa.JSON(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")

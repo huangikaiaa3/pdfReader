@@ -11,6 +11,7 @@ The current focus is:
 - frontend notification through Server-Sent Events (SSE)
 - semantic retrieval
 - grounded document answers
+- persisted document conversations
 
 ## Core Principles
 
@@ -344,6 +345,86 @@ This endpoint performs the first grounded RAG answer flow:
   - `answer_status = "insufficient_context"`
   - a no-answer style fallback instead of forcing a speculative answer
 - The current heuristic uses the best match distance against a configurable threshold.
+
+## Conversation Endpoints
+
+### Purpose
+
+These endpoints persist chat state on the backend so the frontend does not have to keep the entire conversation in browser memory only.
+
+### Create conversation
+
+Route:
+
+`POST /conversations`
+
+Request shape:
+
+```json
+{
+  "document_version_id": "uuid",
+  "title": "Optional custom title"
+}
+```
+
+Behavior:
+
+- verifies the document version belongs to the current user
+- requires `document_versions.pipeline_status = "ready"`
+- creates a new conversation row with zero messages
+
+### List conversations
+
+Route:
+
+`GET /conversations`
+
+Optional query params:
+
+- `document_version_id`
+
+Behavior:
+
+- returns only conversations owned by the authenticated user
+- can be filtered down to one document version
+
+### Get conversation
+
+Route:
+
+`GET /conversations/{conversation_id}`
+
+Behavior:
+
+- returns the persisted conversation with all stored messages
+- rejects access to conversations owned by another user
+
+### Append question/answer turn
+
+Route:
+
+`POST /conversations/{conversation_id}/messages`
+
+Request shape:
+
+```json
+{
+  "question": "What is the cumulative GPA?",
+  "top_k": 3
+}
+```
+
+Behavior:
+
+1. persist the user message
+2. run the existing retrieval + grounded answer flow against the conversation's `document_version_id`
+3. persist the assistant response with answer status and citations
+4. return both newly created message records plus retrieval matches
+
+Notes:
+
+- this keeps the original `/document-versions/{document_version_id}/ask` endpoint available as a stateless primitive
+- the conversation route is the stateful wrapper that makes the chat history deployable
 
 ## Backend Event Flow
 
