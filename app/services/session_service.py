@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta, timezone
+import logging
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -17,6 +18,7 @@ from app.services.queue_service import enqueue_ingestion_job
 from app.services.storage_service import delete_pdf, get_document_storage
 
 ACTIVE_SESSION_STATUSES = {"ingesting", "ready", "failed"}
+logger = logging.getLogger(__name__)
 
 
 def create_session(db: Session, file: UploadFile, current_user: User) -> SessionDetailResponse:
@@ -103,6 +105,11 @@ def ask_session_question(db: Session, session_id, question: str, top_k: int, cur
     session = _get_owned_session(db=db, session_id=session_id, current_user=current_user)
     if session.status != "ready":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is not ready for chat yet.")
+    if len(question) > get_settings().max_session_question_chars:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question exceeds the maximum allowed length for a session message.",
+        )
 
     user_message = SessionMessage(
         session_id=session.id,
@@ -116,13 +123,25 @@ def ask_session_question(db: Session, session_id, question: str, top_k: int, cur
     db.commit()
     db.refresh(user_message)
 
-    answer_response = ask_document_question(
-        db=db,
-        document_version_id=session.document_version_id,
-        question=question,
-        top_k=top_k,
-        current_user=current_user,
-    )
+    try:
+        answer_response = ask_document_question(
+            db=db,
+            document_version_id=session.document_version_id,
+            question=question,
+            top_k=top_k,
+            current_user=current_user,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        session.last_activity_at = datetime.now(timezone.utc)
+        db.commit()
+        logger.exception("AI answer generation failed for session %s", session.id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The AI service is temporarily unavailable. Please try again.",
+        ) from exc
+
     assistant_message = SessionMessage(
         session_id=session.id,
         role="assistant",

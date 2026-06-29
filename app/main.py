@@ -6,6 +6,8 @@ from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.health import router as health_router
@@ -50,6 +52,17 @@ async def log_requests(request: Request, call_next):
         duration_ms,
     )
     return response
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
+    """Return JSON for unexpected server-side failures."""
+
+    logger.exception("Unhandled application error for path=%s", request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred. Please try again."},
+    )
 
 
 app.include_router(auth_router)

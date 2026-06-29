@@ -88,6 +88,15 @@ def process_extraction_job(db, ingestion_job: IngestionJob) -> None:
         _publish_pipeline_event(db, document_version, ingestion_job)
 
         extraction_result = extract_pdf_text(document_version.storage_path)
+        if extraction_result["page_count"] > get_settings().max_pdf_pages:
+            _mark_job_failed(
+                db,
+                ingestion_job,
+                f"PDF exceeds the maximum allowed page count of {get_settings().max_pdf_pages}.",
+                allow_retry=False,
+            )
+            logger.warning("Extraction job %s exceeded page limit with page_count=%s", ingestion_job.id, extraction_result["page_count"])
+            return
         document_version.page_count = extraction_result["page_count"]
 
         if extraction_result["is_readable"]:
@@ -130,6 +139,14 @@ def process_extraction_job(db, ingestion_job: IngestionJob) -> None:
         _publish_pipeline_event(db, document_version, ingestion_job)
         if extraction_result["is_readable"]:
             enqueue_ingestion_job(next_job.id)
+    except FileNotFoundError:
+        _mark_job_failed(
+            db,
+            ingestion_job,
+            "Source PDF is no longer available for this session.",
+            allow_retry=False,
+        )
+        logger.warning("Extraction job %s failed because source PDF is missing", ingestion_job.id)
     except Exception as exc:
         _mark_job_failed(db, ingestion_job, str(exc), allow_retry=True)
         logger.exception("Extraction job %s crashed", ingestion_job.id)
