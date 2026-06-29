@@ -18,6 +18,7 @@ from app.services.chunking_service import build_document_chunks
 from app.services.embedding_service import build_chunk_embedding_payloads
 from app.services.extraction_service import extract_pdf_text
 from app.services.queue_service import enqueue_ingestion_job, publish_ingestion_event
+from app.services.session_service import get_session_by_document_version_id, touch_session_activity
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +82,10 @@ def process_extraction_job(db, ingestion_job: IngestionJob) -> None:
         ingestion_job.finished_at = None
         ingestion_job.error_message = None
         document_version.pipeline_status = "extracting"
+        touch_session_activity(db, document_version.id, status="ingesting", failure_message=None)
         db.commit()
         logger.info("Ingestion job %s marked running", ingestion_job.id)
-        _publish_pipeline_event(document_version, ingestion_job)
+        _publish_pipeline_event(db, document_version, ingestion_job)
 
         extraction_result = extract_pdf_text(document_version.storage_path)
         document_version.page_count = extraction_result["page_count"]
@@ -99,6 +101,7 @@ def process_extraction_job(db, ingestion_job: IngestionJob) -> None:
                 db.add(document_page)
             next_job = _create_next_job(db, document_version.id, "chunk_text")
             document_version.pipeline_status = "chunking"
+            touch_session_activity(db, document_version.id, status="ingesting", failure_message=None)
             ingestion_job.status = "succeeded"
             ingestion_job.error_message = None
             logger.info(
@@ -109,11 +112,12 @@ def process_extraction_job(db, ingestion_job: IngestionJob) -> None:
             )
         else:
             document_version.pipeline_status = "failed"
+            touch_session_activity(db, document_version.id, status="failed", failure_message=extraction_result["message"])
             ingestion_job.status = "failed"
             ingestion_job.error_message = extraction_result["message"]
             ingestion_job.finished_at = datetime.now(timezone.utc)
             db.commit()
-            _publish_pipeline_event(document_version, ingestion_job)
+            _publish_pipeline_event(db, document_version, ingestion_job)
             logger.warning(
                 "Ingestion job %s failed readability check: %s",
                 ingestion_job.id,
@@ -123,7 +127,7 @@ def process_extraction_job(db, ingestion_job: IngestionJob) -> None:
 
         ingestion_job.finished_at = datetime.now(timezone.utc)
         db.commit()
-        _publish_pipeline_event(document_version, ingestion_job)
+        _publish_pipeline_event(db, document_version, ingestion_job)
         if extraction_result["is_readable"]:
             enqueue_ingestion_job(next_job.id)
     except Exception as exc:
@@ -158,9 +162,10 @@ def process_chunking_job(db, ingestion_job: IngestionJob) -> None:
         ingestion_job.finished_at = None
         ingestion_job.error_message = None
         document_version.pipeline_status = "chunking"
+        touch_session_activity(db, document_version.id, status="ingesting", failure_message=None)
         db.commit()
         logger.info("Chunking job %s marked running", ingestion_job.id)
-        _publish_pipeline_event(document_version, ingestion_job)
+        _publish_pipeline_event(db, document_version, ingestion_job)
 
         chunk_payloads = build_document_chunks(document_pages)
         if not chunk_payloads:
@@ -187,12 +192,13 @@ def process_chunking_job(db, ingestion_job: IngestionJob) -> None:
 
         next_job = _create_next_job(db, document_version.id, "build_embeddings")
         document_version.pipeline_status = "embedding"
+        touch_session_activity(db, document_version.id, status="ingesting", failure_message=None)
         ingestion_job.status = "succeeded"
         ingestion_job.error_message = None
         ingestion_job.finished_at = datetime.now(timezone.utc)
         db.commit()
         logger.info("Chunking job %s succeeded with chunk_count=%s", ingestion_job.id, len(chunk_payloads))
-        _publish_pipeline_event(document_version, ingestion_job)
+        _publish_pipeline_event(db, document_version, ingestion_job)
         enqueue_ingestion_job(next_job.id)
     except Exception as exc:
         _mark_job_failed(db, ingestion_job, str(exc), allow_retry=True)
@@ -226,8 +232,9 @@ def process_embedding_job(db, ingestion_job: IngestionJob) -> None:
         ingestion_job.finished_at = None
         ingestion_job.error_message = None
         document_version.pipeline_status = "embedding"
+        touch_session_activity(db, document_version.id, status="ingesting", failure_message=None)
         db.commit()
-        _publish_pipeline_event(document_version, ingestion_job)
+        _publish_pipeline_event(db, document_version, ingestion_job)
 
         embedding_payloads = build_chunk_embedding_payloads(document_version, document_chunks)
         if not embedding_payloads:
@@ -246,12 +253,13 @@ def process_embedding_job(db, ingestion_job: IngestionJob) -> None:
             )
 
         document_version.pipeline_status = "ready"
+        touch_session_activity(db, document_version.id, status="ready", failure_message=None)
         ingestion_job.status = "succeeded"
         ingestion_job.error_message = None
         ingestion_job.finished_at = datetime.now(timezone.utc)
         db.commit()
         logger.info("Embedding job %s succeeded with embedding_count=%s", ingestion_job.id, len(embedding_payloads))
-        _publish_pipeline_event(document_version, ingestion_job)
+        _publish_pipeline_event(db, document_version, ingestion_job)
     except Exception as exc:
         _mark_job_failed(db, ingestion_job, str(exc), allow_retry=True)
         logger.exception("Embedding job %s crashed", ingestion_job.id)
@@ -297,9 +305,10 @@ def recover_document_pipeline(db, document_version_id: UUID | str, current_user:
 
     next_job = _create_next_job(db, document_version.id, next_job_type)
     document_version.pipeline_status = _pipeline_status_for_job_type(next_job_type)
+    touch_session_activity(db, document_version.id, status="ingesting", failure_message=None)
     db.commit()
     enqueue_ingestion_job(next_job.id)
-    _publish_pipeline_event(document_version, next_job)
+    _publish_pipeline_event(db, document_version, next_job)
     logger.info(
         "Recovery enqueued job %s (%s) for document version %s",
         next_job.id,
@@ -326,8 +335,10 @@ def _mark_job_failed(db, ingestion_job: IngestionJob, error_message: str, allow_
     if allow_retry and document_version is not None and ingestion_job.attempt_count < get_settings().ingestion_max_attempts:
         retry_job = _create_retry_job(db, ingestion_job)
         document_version.pipeline_status = _pipeline_status_for_job_type(ingestion_job.job_type)
+        touch_session_activity(db, document_version.id, status="ingesting", failure_message=error_message)
     elif document_version is not None:
         document_version.pipeline_status = "failed"
+        touch_session_activity(db, document_version.id, status="failed", failure_message=error_message)
 
     db.commit()
 
@@ -339,10 +350,10 @@ def _mark_job_failed(db, ingestion_job: IngestionJob, error_message: str, allow_
             retry_job.attempt_count,
             get_settings().ingestion_max_attempts,
         )
-        _publish_pipeline_event(document_version, retry_job)
+        _publish_pipeline_event(db, document_version, retry_job)
         enqueue_ingestion_job(retry_job.id)
     elif document_version is not None:
-        _publish_pipeline_event(document_version, ingestion_job)
+        _publish_pipeline_event(db, document_version, ingestion_job)
     else:
         publish_ingestion_event(
             {
@@ -387,15 +398,18 @@ def _reset_stage_artifacts(db, document_version: DocumentVersion, job_type: str)
     db.flush()
 
 
-def _publish_pipeline_event(document_version: DocumentVersion, ingestion_job: IngestionJob) -> None:
+def _publish_pipeline_event(db, document_version: DocumentVersion, ingestion_job: IngestionJob) -> None:
     """Publish the current pipeline state for one document version."""
 
+    session = get_session_by_document_version_id(db, document_version.id)
     publish_ingestion_event(
         {
-            "event": "pipeline_status",
+            "event": "session_status",
+            "session_id": str(session.id) if session is not None else None,
             "document_version_id": str(document_version.id),
             "ingestion_job_id": str(ingestion_job.id),
-            "status": document_version.pipeline_status,
+            "status": session.status if session is not None else document_version.pipeline_status,
+            "pipeline_status": document_version.pipeline_status,
             "page_count": document_version.page_count,
             "error_message": ingestion_job.error_message,
         }

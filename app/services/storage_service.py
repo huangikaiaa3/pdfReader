@@ -33,6 +33,16 @@ class BaseDocumentStorage:
 
         raise NotImplementedError
 
+    def delete_pdf(self, storage_uri: str) -> None:
+        """Delete one stored PDF by its opaque storage URI."""
+
+        raise NotImplementedError
+
+    def exists(self, storage_uri: str) -> bool:
+        """Return whether one stored PDF is currently available."""
+
+        raise NotImplementedError
+
 
 class LocalDocumentStorage(BaseDocumentStorage):
     """Filesystem-backed storage for development and simple deployments."""
@@ -53,6 +63,18 @@ class LocalDocumentStorage(BaseDocumentStorage):
         full_path = Path(get_settings().storage_root) / key
         return full_path.read_bytes()
 
+    def delete_pdf(self, storage_uri: str) -> None:
+        parsed = urlparse(storage_uri)
+        key = _parse_storage_key(parsed, expected_scheme="local")
+        full_path = Path(get_settings().storage_root) / key
+        if full_path.exists():
+            full_path.unlink()
+
+    def exists(self, storage_uri: str) -> bool:
+        parsed = urlparse(storage_uri)
+        key = _parse_storage_key(parsed, expected_scheme="local")
+        return (Path(get_settings().storage_root) / key).exists()
+
 
 class S3DocumentStorage(BaseDocumentStorage):
     """Object-storage-oriented URI formatter for future S3-compatible storage."""
@@ -66,6 +88,12 @@ class S3DocumentStorage(BaseDocumentStorage):
 
     def read_pdf_bytes(self, storage_uri: str) -> bytes:
         raise NotImplementedError("S3 document reads are not implemented yet.")
+
+    def delete_pdf(self, storage_uri: str) -> None:
+        raise NotImplementedError("S3 document deletion is not implemented yet.")
+
+    def exists(self, storage_uri: str) -> bool:
+        raise NotImplementedError("S3 document existence checks are not implemented yet.")
 
 
 def get_document_storage() -> BaseDocumentStorage:
@@ -88,6 +116,30 @@ def read_pdf_bytes(storage_uri: str) -> bytes:
     if parsed.scheme == "s3":
         return S3DocumentStorage().read_pdf_bytes(storage_uri)
     raise ValueError(f"Unsupported storage URI scheme: {parsed.scheme}")
+
+
+def delete_pdf(storage_uri: str) -> None:
+    """Delete one stored PDF via the backend encoded in its URI."""
+
+    parsed = urlparse(storage_uri)
+    if parsed.scheme == "local":
+        LocalDocumentStorage().delete_pdf(storage_uri)
+        return
+    if parsed.scheme == "s3":
+        S3DocumentStorage().delete_pdf(storage_uri)
+        return
+    raise ValueError(f"Unsupported storage URI scheme: {parsed.scheme}")
+
+
+def storage_exists(storage_uri: str) -> bool:
+    """Return whether one stored PDF is available via its storage URI."""
+
+    parsed = urlparse(storage_uri)
+    if parsed.scheme == "local":
+        return LocalDocumentStorage().exists(storage_uri)
+    if parsed.scheme == "s3":
+        return S3DocumentStorage().exists(storage_uri)
+    return False
 
 
 def _parse_storage_key(parsed_uri, expected_scheme: str) -> str:
