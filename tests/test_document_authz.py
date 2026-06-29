@@ -36,11 +36,29 @@ def test_document_status_route_rejects_access_to_other_users_document(client, db
     assert response.json()["detail"] == "Document version not found."
 
 
-def test_upload_deduplicates_only_within_same_owner(client, db_session, monkeypatch, tmp_path):
+def test_upload_deduplicates_only_within_same_owner(client, db_session, monkeypatch):
     from app.services import document_service
 
     queued_job_ids: list[str] = []
-    monkeypatch.setattr(document_service, "get_settings", lambda: type("Settings", (), {"storage_root": str(tmp_path)})())
+    monkeypatch.setattr(
+        document_service,
+        "get_document_storage",
+        lambda: type(
+            "Storage",
+            (),
+            {
+                "store_pdf": lambda self, document_version_id, file_bytes: type(
+                    "StoredObject",
+                    (),
+                    {
+                        "uri": f"local://documents/{document_version_id}.pdf",
+                        "backend": "local",
+                        "key": f"documents/{document_version_id}.pdf",
+                    },
+                )()
+            },
+        )(),
+    )
     monkeypatch.setattr(document_service, "enqueue_ingestion_job", lambda job_id: queued_job_ids.append(str(job_id)))
 
     file_payload = {

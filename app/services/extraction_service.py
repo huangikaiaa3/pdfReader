@@ -1,11 +1,14 @@
-from pathlib import Path
+from io import BytesIO
+
 from pypdf import PdfReader
+
+from app.services.storage_service import read_pdf_bytes
+
 
 def extract_pdf_text(storage_path: str) -> dict:
     """Extract text from a PDF file and return page-level results."""
 
-    pdf_path = Path(storage_path)
-    reader = PdfReader(pdf_path)
+    reader = PdfReader(BytesIO(read_pdf_bytes(storage_path)))
 
     pages = []
     for index, page in enumerate(reader.pages, start=1):

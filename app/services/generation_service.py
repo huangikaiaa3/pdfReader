@@ -30,7 +30,7 @@ def answer_question_with_context(question: str, matches: list[DocumentSearchMatc
         raise ValueError("GEMINI_API_KEY is not configured.")
 
     prompt = build_grounded_prompt(question, matches)
-    client = genai.Client(api_key=settings.gemini_api_key)
+    client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
 
     response = client.models.generate_content(
         model=settings.generation_model,

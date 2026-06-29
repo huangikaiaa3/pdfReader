@@ -70,6 +70,7 @@ Notes:
 - `sha256` is indexed for duplicate detection and file identity checks.
 - `pipeline_status` is the frontend-facing readiness signal.
 - File-specific metadata belongs here, not on `documents`.
+- `storage_path` should be treated as an opaque storage URI such as `local://documents/<uuid>.pdf` rather than a literal local path.
 
 ## document_pages
 
