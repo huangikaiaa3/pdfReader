@@ -7,8 +7,8 @@ from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage,
 from app.services import ingestion_service
 
 
-def _create_document_version(db_session, pipeline_status: str = "pending") -> DocumentVersion:
-    document = Document(id=uuid4(), title="Doc", source_type="upload")
+def _create_document_version(db_session, current_user, pipeline_status: str = "pending") -> DocumentVersion:
+    document = Document(id=uuid4(), owner_user_id=current_user.id, title="Doc", source_type="upload")
     document_version = DocumentVersion(
         id=uuid4(),
         document_id=document.id,
@@ -26,8 +26,8 @@ def _create_document_version(db_session, pipeline_status: str = "pending") -> Do
     return document_version
 
 
-def test_reset_stage_artifacts_only_removes_stage_outputs(db_session):
-    document_version = _create_document_version(db_session)
+def test_reset_stage_artifacts_only_removes_stage_outputs(db_session, current_user):
+    document_version = _create_document_version(db_session, current_user)
     page = DocumentPage(document_version_id=document_version.id, page_number=1, text="Page one", char_count=8)
     chunk = DocumentChunk(
         document_version_id=document_version.id,
@@ -72,7 +72,7 @@ def test_reset_stage_artifacts_only_removes_stage_outputs(db_session):
     assert db_session.query(ChunkEmbedding).count() == 0
 
 
-def test_recover_document_pipeline_enqueues_missing_embedding_stage(client, db_session, monkeypatch):
+def test_recover_document_pipeline_enqueues_missing_embedding_stage(client, db_session, monkeypatch, current_user):
     queued_job_ids: list[str] = []
     published_payloads: list[dict] = []
 
@@ -87,7 +87,7 @@ def test_recover_document_pipeline_enqueues_missing_embedding_stage(client, db_s
         lambda payload: published_payloads.append(payload),
     )
 
-    document_version = _create_document_version(db_session, pipeline_status="failed")
+    document_version = _create_document_version(db_session, current_user, pipeline_status="failed")
     page = DocumentPage(document_version_id=document_version.id, page_number=1, text="Page one", char_count=8)
     chunk = DocumentChunk(
         document_version_id=document_version.id,
@@ -123,7 +123,7 @@ def test_recover_document_pipeline_enqueues_missing_embedding_stage(client, db_s
     assert published_payloads[-1]["status"] == "embedding"
 
 
-def test_mark_job_failed_creates_retry_job_for_retryable_failure(db_session, monkeypatch):
+def test_mark_job_failed_creates_retry_job_for_retryable_failure(db_session, monkeypatch, current_user):
     queued_job_ids: list[str] = []
     published_payloads: list[dict] = []
 
@@ -143,7 +143,7 @@ def test_mark_job_failed_creates_retry_job_for_retryable_failure(db_session, mon
         lambda: SimpleNamespace(ingestion_max_attempts=3),
     )
 
-    document_version = _create_document_version(db_session, pipeline_status="embedding")
+    document_version = _create_document_version(db_session, current_user, pipeline_status="embedding")
     job = IngestionJob(
         document_version_id=document_version.id,
         job_type="build_embeddings",
@@ -171,7 +171,7 @@ def test_mark_job_failed_creates_retry_job_for_retryable_failure(db_session, mon
     assert published_payloads[-1]["status"] == "embedding"
 
 
-def test_mark_job_failed_stops_retry_for_terminal_failure(db_session, monkeypatch):
+def test_mark_job_failed_stops_retry_for_terminal_failure(db_session, monkeypatch, current_user):
     published_payloads: list[dict] = []
 
     monkeypatch.setattr(
@@ -185,7 +185,7 @@ def test_mark_job_failed_stops_retry_for_terminal_failure(db_session, monkeypatc
         lambda: SimpleNamespace(ingestion_max_attempts=3),
     )
 
-    document_version = _create_document_version(db_session, pipeline_status="extracting")
+    document_version = _create_document_version(db_session, current_user, pipeline_status="extracting")
     job = IngestionJob(
         document_version_id=document_version.id,
         job_type="extract_text",

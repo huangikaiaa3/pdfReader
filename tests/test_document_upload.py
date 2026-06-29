@@ -45,9 +45,9 @@ def test_upload_document_deduplicates_by_checksum(client, db_session, monkeypatc
     assert db_session.query(IngestionJob).count() == 1
 
 
-def test_get_document_version_returns_status_snapshot(client, db_session):
+def test_get_document_version_returns_status_snapshot(client, db_session, current_user):
     now = datetime.now(timezone.utc)
-    document = Document(id=uuid4(), title="My Transcript", source_type="upload")
+    document = Document(id=uuid4(), owner_user_id=current_user.id, title="My Transcript", source_type="upload")
     document_version = DocumentVersion(
         id=uuid4(),
         document_id=document.id,

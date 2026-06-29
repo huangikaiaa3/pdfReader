@@ -11,8 +11,8 @@ from app.db.models import Document, DocumentChunk, DocumentVersion
 from app.services import retrieval_service
 
 
-def _create_document_version(db_session, pipeline_status: str = "ready") -> DocumentVersion:
-    document = Document(id=uuid4(), title="Searchable Doc", source_type="upload")
+def _create_document_version(db_session, current_user, pipeline_status: str = "ready") -> DocumentVersion:
+    document = Document(id=uuid4(), owner_user_id=current_user.id, title="Searchable Doc", source_type="upload")
     document_version = DocumentVersion(
         id=uuid4(),
         document_id=document.id,
@@ -30,8 +30,8 @@ def _create_document_version(db_session, pipeline_status: str = "ready") -> Docu
     return document_version
 
 
-def test_search_document_chunks_returns_ranked_matches(db_session, monkeypatch):
-    document_version = _create_document_version(db_session, pipeline_status="ready")
+def test_search_document_chunks_returns_ranked_matches(db_session, monkeypatch, current_user):
+    document_version = _create_document_version(db_session, current_user, pipeline_status="ready")
     chunk_a = DocumentChunk(
         id=uuid4(),
         document_version_id=document_version.id,
@@ -82,6 +82,7 @@ def test_search_document_chunks_returns_ranked_matches(db_session, monkeypatch):
         document_version_id=document_version.id,
         query="What is in beta?",
         top_k=2,
+        current_user=current_user,
     )
 
     assert response.document_version_id == document_version.id
@@ -92,8 +93,8 @@ def test_search_document_chunks_returns_ranked_matches(db_session, monkeypatch):
     assert response.matches[1].chunk_index == 0
 
 
-def test_search_document_chunks_rejects_non_ready_document(db_session, monkeypatch):
-    document_version = _create_document_version(db_session, pipeline_status="embedding")
+def test_search_document_chunks_rejects_non_ready_document(db_session, monkeypatch, current_user):
+    document_version = _create_document_version(db_session, current_user, pipeline_status="embedding")
     monkeypatch.setattr(retrieval_service, "build_query_embedding", lambda query: [0.1, 0.2, 0.3])
 
     with pytest.raises(HTTPException) as exc_info:
@@ -102,13 +103,14 @@ def test_search_document_chunks_rejects_non_ready_document(db_session, monkeypat
             document_version_id=document_version.id,
             query="Can I search yet?",
             top_k=3,
+            current_user=current_user,
         )
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.detail == "Document version is not ready for retrieval."
 
 
-def test_search_document_chunks_raises_for_unknown_document_version(db_session, monkeypatch):
+def test_search_document_chunks_raises_for_unknown_document_version(db_session, monkeypatch, current_user):
     monkeypatch.setattr(retrieval_service, "build_query_embedding", lambda query: [0.1, 0.2, 0.3])
 
     with pytest.raises(HTTPException) as exc_info:
@@ -117,18 +119,19 @@ def test_search_document_chunks_raises_for_unknown_document_version(db_session, 
             document_version_id=uuid4(),
             query="Unknown doc?",
             top_k=3,
+            current_user=current_user,
         )
 
     assert exc_info.value.status_code == 404
 
 
-def test_search_document_version_route_returns_matches(client, db_session, monkeypatch):
-    document_version = _create_document_version(db_session, pipeline_status="ready")
+def test_search_document_version_route_returns_matches(client, db_session, monkeypatch, current_user):
+    document_version = _create_document_version(db_session, current_user, pipeline_status="ready")
 
     monkeypatch.setattr(
         document_routes,
         "search_document_chunks",
-        lambda db, document_version_id, query, top_k: {
+        lambda db, document_version_id, query, top_k, current_user: {
             "document_version_id": str(document_version_id),
             "query": query,
             "matches": [

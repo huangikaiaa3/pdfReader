@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.db.models import ChunkEmbedding, DocumentChunk, DocumentPage, DocumentVersion, IngestionJob
+from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentVersion, IngestionJob, User
 from app.db.session import SessionLocal
 from app.schemas.document import DocumentRecoveryResponse
 from app.services.document_service import build_recovery_response
@@ -257,10 +257,15 @@ def process_embedding_job(db, ingestion_job: IngestionJob) -> None:
         logger.exception("Embedding job %s crashed", ingestion_job.id)
 
 
-def recover_document_pipeline(db, document_version_id: UUID | str) -> DocumentRecoveryResponse:
+def recover_document_pipeline(db, document_version_id: UUID | str, current_user: User) -> DocumentRecoveryResponse:
     """Requeue the next required stage for one document version based on stored state."""
 
-    document_version = db.query(DocumentVersion).filter(DocumentVersion.id == document_version_id).first()
+    document_version = (
+        db.query(DocumentVersion)
+        .join(Document)
+        .filter(DocumentVersion.id == document_version_id, Document.owner_user_id == current_user.id)
+        .first()
+    )
     if document_version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document version not found.")
 
