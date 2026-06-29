@@ -39,6 +39,23 @@ def build_chunk_embedding_payloads(document_version: DocumentVersion, document_c
     return payloads
 
 
+def build_query_embedding(query: str) -> list[float]:
+    """Generate an embedding vector for a user search query."""
+
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        raise ValueError("GEMINI_API_KEY is not configured.")
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    result = client.models.embed_content(
+        model=settings.embedding_model,
+        contents=query,
+        config=types.EmbedContentConfig(output_dimensionality=settings.embedding_output_dimensionality),
+    )
+    [embedding_obj] = result.embeddings
+    return list(embedding_obj.values)
+
+
 def _prepare_document_content(title: str, text: str) -> str:
     """Format document text for retrieval-oriented embeddings."""
 

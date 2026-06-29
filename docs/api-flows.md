@@ -9,6 +9,8 @@ The current focus is:
 - staged ingestion jobs
 - pipeline status tracking
 - frontend notification through Server-Sent Events (SSE)
+- semantic retrieval
+- grounded document answers
 
 ## Core Principles
 
@@ -234,6 +236,114 @@ This endpoint requeues the next missing ingestion stage based on persisted datab
   "message": "Enqueued recovery job for stage 'build_embeddings'."
 }
 ```
+
+## Search Endpoint
+
+### Route
+
+`POST /document-versions/{document_version_id}/search`
+
+### Purpose
+
+This endpoint embeds a user query, searches the stored chunk embeddings for one document version, and returns the top matching chunks.
+
+### Request shape
+
+```json
+{
+  "query": "What is the cumulative GPA?",
+  "top_k": 5
+}
+```
+
+### Response shape
+
+```json
+{
+  "document_version_id": "uuid",
+  "query": "What is the cumulative GPA?",
+  "matches": [
+    {
+      "chunk_id": "uuid",
+      "chunk_index": 4,
+      "start_page_number": 2,
+      "end_page_number": 2,
+      "text": "...",
+      "distance": 0.1234
+    }
+  ]
+}
+```
+
+### Notes
+
+- Search is currently scoped to one `document_version_id`.
+- Lower `distance` means a stronger semantic match.
+- The current implementation uses cosine distance over stored pgvector embeddings.
+
+## Ask Endpoint
+
+### Route
+
+`POST /document-versions/{document_version_id}/ask`
+
+### Purpose
+
+This endpoint performs the first grounded RAG answer flow:
+
+1. retrieve top semantic chunk matches
+2. send the question and retrieved context to Gemini
+3. return an answer plus supporting citations
+
+### Request shape
+
+```json
+{
+  "question": "What is the cumulative GPA?",
+  "top_k": 3
+}
+```
+
+### Response shape
+
+```json
+{
+  "document_version_id": "uuid",
+  "question": "What is the cumulative GPA?",
+  "answer_status": "answered",
+  "answer": "Cumulative GPA: 3.582",
+  "citations": [
+    {
+      "chunk_id": "uuid",
+      "chunk_index": 4,
+      "start_page_number": 2,
+      "end_page_number": 2
+    }
+  ],
+  "matches": [
+    {
+      "chunk_id": "uuid",
+      "chunk_index": 4,
+      "start_page_number": 2,
+      "end_page_number": 2,
+      "text": "...",
+      "distance": 0.1234
+    }
+  ]
+}
+```
+
+### Answer status values
+
+- `answered`
+- `insufficient_context`
+
+### Weak-context behavior
+
+- If no strong enough retrieval evidence is found, the endpoint returns:
+  - `answer_status = "insufficient_context"`
+  - a no-answer style fallback instead of forcing a speculative answer
+- The current heuristic uses the best match distance against a configurable threshold.
 
 ## Backend Event Flow
 
