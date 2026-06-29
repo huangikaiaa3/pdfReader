@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import time
 from typing import Iterator
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.api.deps.auth import get_current_user
 from app.core.config import get_settings
-from app.db.models import DocumentVersion, IngestionJob
+from app.db.models import Document, DocumentVersion, IngestionJob, User
 from app.db.session import SessionLocal
 from app.services.queue_service import get_redis_client
 
@@ -21,7 +23,10 @@ TERMINAL_STATUSES = {"ready", "failed"}
 
 
 @router.get("/document-versions/{document_version_id}/events")
-def stream_document_version_events(document_version_id: UUID) -> StreamingResponse:
+def stream_document_version_events(
+    document_version_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
     """Stream pipeline status events for a specific document version."""
 
     def event_stream() -> Iterator[str]:
@@ -31,7 +36,12 @@ def stream_document_version_events(document_version_id: UUID) -> StreamingRespon
         pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
         pubsub.subscribe(settings.ingestion_event_channel)
         try:
-            current_version = db.query(DocumentVersion).filter(DocumentVersion.id == document_version_id).first()
+            current_version = (
+                db.query(DocumentVersion)
+                .join(Document)
+                .filter(DocumentVersion.id == document_version_id, Document.owner_user_id == current_user.id)
+                .first()
+            )
             if current_version is None:
                 yield _format_sse(
                     {

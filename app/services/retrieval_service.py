@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
-from app.db.models import ChunkEmbedding, DocumentChunk, DocumentVersion
+from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentVersion, User
 from app.schemas.document import DocumentSearchMatchResponse, DocumentSearchResponse
 from app.services.embedding_service import build_query_embedding
 
 
-def search_document_chunks(db, document_version_id, query: str, top_k: int) -> DocumentSearchResponse:
+def search_document_chunks(db, document_version_id, query: str, top_k: int, current_user: User) -> DocumentSearchResponse:
     """Embed a query, search one document version's chunks, and return the best matches."""
 
-    document_version = db.query(DocumentVersion).filter(DocumentVersion.id == document_version_id).first()
+    document_version = (
+        db.query(DocumentVersion)
+        .join(Document)
+        .filter(DocumentVersion.id == document_version_id, Document.owner_user_id == current_user.id)
+        .first()
+    )
     if document_version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document version not found.")
     if document_version.pipeline_status != "ready":

@@ -1,10 +1,13 @@
 """Document upload and recovery routes."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import get_current_user
+from app.db.models import User
 from app.db.session import get_db
 from app.schemas.document import (
     DocumentRecoveryResponse,
@@ -25,34 +28,68 @@ router = APIRouter(tags=["documents"])
 
 
 @router.post("/documents/upload", response_model=DocumentUploadResponse)
-def upload_document_route(file: UploadFile = File(...), db: Session = Depends(get_db),) -> DocumentUploadResponse:
+def upload_document_route(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> DocumentUploadResponse:
     """Accept a PDF upload and persist its initial metadata."""
 
-    return upload_document(db=db, file=file)
+    return upload_document(db=db, file=file, current_user=current_user)
 
 
 @router.post("/document-versions/{document_version_id}/recover", response_model=DocumentRecoveryResponse)
-def recover_document_version_route(document_version_id: UUID, db: Session = Depends(get_db)) -> DocumentRecoveryResponse:
+def recover_document_version_route(
+    document_version_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> DocumentRecoveryResponse:
     """Requeue the next missing ingestion stage for one document version."""
 
-    return recover_document_pipeline(db=db, document_version_id=document_version_id)
+    return recover_document_pipeline(db=db, document_version_id=document_version_id, current_user=current_user)
 
 
 @router.get("/document-versions/{document_version_id}", response_model=DocumentVersionStatusResponse)
-def get_document_version_route(document_version_id: UUID, db: Session = Depends(get_db)) -> DocumentVersionStatusResponse:
+def get_document_version_route(
+    document_version_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> DocumentVersionStatusResponse:
     """Return the current status snapshot for one document version."""
 
-    return get_document_version_status(db=db, document_version_id=document_version_id)
+    return get_document_version_status(db=db, document_version_id=document_version_id, current_user=current_user)
 
 
 @router.post("/document-versions/{document_version_id}/search", response_model=DocumentSearchResponse)
-def search_document_version_route(document_version_id: UUID, payload: DocumentSearchRequest, db: Session = Depends(get_db),) -> DocumentSearchResponse:
+def search_document_version_route(
+    document_version_id: UUID,
+    payload: DocumentSearchRequest,
+    db: Session = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> DocumentSearchResponse:
     """Return the top semantic chunk matches for one document version."""
 
-    return search_document_chunks(db=db, document_version_id=document_version_id, query=payload.query, top_k=payload.top_k,)
+    return search_document_chunks(
+        db=db,
+        document_version_id=document_version_id,
+        query=payload.query,
+        top_k=payload.top_k,
+        current_user=current_user,
+    )
 
 @router.post("/document-versions/{document_version_id}/ask", response_model=DocumentAskResponse)
-def ask_document_version_route(document_version_id: UUID, payload: DocumentAskRequest, db: Session = Depends(get_db)) -> DocumentAskResponse:
+def ask_document_version_route(
+    document_version_id: UUID,
+    payload: DocumentAskRequest,
+    db: Session = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+) -> DocumentAskResponse:
     """Answer one question using retrieved context from a document version."""
     
-    return ask_document_question(db=db, document_version_id=document_version_id, question=payload.question, top_k=payload.top_k)
+    return ask_document_question(
+        db=db,
+        document_version_id=document_version_id,
+        question=payload.question,
+        top_k=payload.top_k,
+        current_user=current_user,
+    )

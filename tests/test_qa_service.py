@@ -21,6 +21,7 @@ def _build_match(chunk_index: int, text: str, distance: float) -> DocumentSearch
 
 def test_ask_document_question_combines_retrieval_and_generation(monkeypatch):
     document_version_id = uuid4()
+    current_user = SimpleNamespace(id=uuid4())
     matches = [
         _build_match(chunk_index=0, text="Cumulative GPA: 3.582", distance=0.10),
         _build_match(chunk_index=1, text="Master of Science", distance=0.24),
@@ -34,7 +35,7 @@ def test_ask_document_question_combines_retrieval_and_generation(monkeypatch):
     monkeypatch.setattr(
         qa_service,
         "search_document_chunks",
-        lambda db, document_version_id, query, top_k: search_response,
+        lambda db, document_version_id, query, top_k, current_user: search_response,
     )
     monkeypatch.setattr(
         qa_service,
@@ -52,6 +53,7 @@ def test_ask_document_question_combines_retrieval_and_generation(monkeypatch):
         document_version_id=document_version_id,
         question="What is the cumulative GPA?",
         top_k=2,
+        current_user=current_user,
     )
 
     assert response.document_version_id == document_version_id
@@ -79,7 +81,7 @@ def test_ask_document_version_route_returns_answer_payload(client, monkeypatch):
     monkeypatch.setattr(
         document_routes,
         "ask_document_question",
-        lambda db, document_version_id, question, top_k: {
+        lambda db, document_version_id, question, top_k, current_user: {
             "document_version_id": str(document_version_id),
             "question": question,
             "answer_status": "answered",
@@ -115,6 +117,7 @@ def test_ask_document_version_route_returns_answer_payload(client, monkeypatch):
 
 def test_ask_document_question_returns_insufficient_context_for_weak_matches(monkeypatch):
     document_version_id = uuid4()
+    current_user = SimpleNamespace(id=uuid4())
     weak_matches = [
         _build_match(chunk_index=0, text="General grading policy", distance=0.62),
         _build_match(chunk_index=1, text="Administrative transcript footer", distance=0.67),
@@ -128,7 +131,7 @@ def test_ask_document_question_returns_insufficient_context_for_weak_matches(mon
     monkeypatch.setattr(
         qa_service,
         "search_document_chunks",
-        lambda db, document_version_id, query, top_k: search_response,
+        lambda db, document_version_id, query, top_k, current_user: search_response,
     )
     monkeypatch.setattr(
         qa_service,
@@ -141,6 +144,7 @@ def test_ask_document_question_returns_insufficient_context_for_weak_matches(mon
         document_version_id=document_version_id,
         question="What is the advisor email address?",
         top_k=2,
+        current_user=current_user,
     )
 
     assert response.document_version_id == document_version_id
@@ -152,6 +156,7 @@ def test_ask_document_question_returns_insufficient_context_for_weak_matches(mon
 
 def test_ask_document_question_marks_generated_no_answer_as_insufficient_context(monkeypatch):
     document_version_id = uuid4()
+    current_user = SimpleNamespace(id=uuid4())
     matches = [
         _build_match(chunk_index=0, text="Registrar office email is listed here.", distance=0.31),
         _build_match(chunk_index=1, text="Transcript authenticity language.", distance=0.37),
@@ -165,7 +170,7 @@ def test_ask_document_question_marks_generated_no_answer_as_insufficient_context
     monkeypatch.setattr(
         qa_service,
         "search_document_chunks",
-        lambda db, document_version_id, query, top_k: search_response,
+        lambda db, document_version_id, query, top_k, current_user: search_response,
     )
     monkeypatch.setattr(
         qa_service,
@@ -183,6 +188,7 @@ def test_ask_document_question_marks_generated_no_answer_as_insufficient_context
         document_version_id=document_version_id,
         question="What is the advisor email address?",
         top_k=2,
+        current_user=current_user,
     )
 
     assert response.answer_status == "insufficient_context"

@@ -11,7 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentVersion, IngestionJob
+from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentVersion, IngestionJob, User
 from app.schemas.document import (
     DocumentArtifactCountsResponse,
     DocumentRecoveryResponse,
@@ -22,7 +22,7 @@ from app.schemas.document import (
 from app.services.queue_service import enqueue_ingestion_job
 
 
-def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
+def upload_document(db: Session, file: UploadFile, current_user: User) -> DocumentUploadResponse:
     """Persist an uploaded PDF and create its initial ingestion records."""
 
     if file.content_type != "application/pdf":
@@ -34,7 +34,7 @@ def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
 
     sha256 = hashlib.sha256(file_bytes).hexdigest()
-    existing_document_version = _get_existing_document_version(db=db, sha256=sha256)
+    existing_document_version = _get_existing_document_version(db=db, sha256=sha256, owner_user_id=current_user.id)
     if existing_document_version is not None:
         return _build_duplicate_upload_response(db=db, document_version=existing_document_version)
 
@@ -47,6 +47,7 @@ def upload_document(db: Session, file: UploadFile) -> DocumentUploadResponse:
 
     document = Document(
         id=document_id,
+        owner_user_id=current_user.id,
         title=original_filename,
         source_type="upload",
     )
@@ -94,10 +95,15 @@ def _store_uploaded_pdf(document_version_id, file_bytes: bytes) -> Path:
     return storage_path
 
 
-def _get_existing_document_version(db: Session, sha256: str) -> DocumentVersion | None:
+def _get_existing_document_version(db: Session, sha256: str, owner_user_id) -> DocumentVersion | None:
     """Return an existing document version for the given checksum, if one exists."""
 
-    return db.query(DocumentVersion).filter(DocumentVersion.sha256 == sha256).first()
+    return (
+        db.query(DocumentVersion)
+        .join(Document)
+        .filter(DocumentVersion.sha256 == sha256, Document.owner_user_id == owner_user_id)
+        .first()
+    )
 
 
 def _build_duplicate_upload_response(db: Session, document_version: DocumentVersion) -> DocumentUploadResponse:
@@ -141,13 +147,13 @@ def build_recovery_response(
     )
 
 
-def get_document_version_status(db: Session, document_version_id) -> DocumentVersionStatusResponse:
+def get_document_version_status(db: Session, document_version_id, current_user: User) -> DocumentVersionStatusResponse:
     """Return the current status snapshot for one document version."""
 
     document_version = (
         db.query(DocumentVersion)
         .join(Document)
-        .filter(DocumentVersion.id == document_version_id)
+        .filter(DocumentVersion.id == document_version_id, Document.owner_user_id == current_user.id)
         .first()
     )
     if document_version is None:

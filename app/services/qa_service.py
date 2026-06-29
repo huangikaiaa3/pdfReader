@@ -1,15 +1,17 @@
 from app.core.config import get_settings
+from app.db.models import User
 from app.schemas.document import DocumentAskResponse, DocumentCitationResponse
 from app.services.retrieval_service import search_document_chunks
 from app.services.generation_service import answer_question_with_context
 
 
-def ask_document_question(db, document_version_id, question: str, top_k: int) -> DocumentAskResponse:
+def ask_document_question(db, document_version_id, question: str, top_k: int, current_user: User) -> DocumentAskResponse:
     search_response = search_document_chunks(
         db=db,
         document_version_id=document_version_id,
         query=question,
         top_k=top_k,
+        current_user=current_user,
     )
 
     citations = _build_citations(search_response.matches)
