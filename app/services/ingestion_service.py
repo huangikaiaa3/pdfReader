@@ -257,6 +257,16 @@ def process_embedding_job(db, ingestion_job: IngestionJob) -> None:
         logger.exception("Embedding job %s crashed", ingestion_job.id)
 
 
+def recover_orphaned_running_jobs(db, error_message: str = "Worker restarted before completing this job.") -> int:
+    """Fail and requeue any jobs left in running state by a previous worker process."""
+
+    running_jobs = db.query(IngestionJob).filter(IngestionJob.status == "running").order_by(IngestionJob.started_at.asc()).all()
+    for ingestion_job in running_jobs:
+        logger.warning("Recovering orphaned running job %s", ingestion_job.id)
+        _mark_job_failed(db, ingestion_job, error_message, allow_retry=True)
+    return len(running_jobs)
+
+
 def recover_document_pipeline(db, document_version_id: UUID | str, current_user: User) -> DocumentRecoveryResponse:
     """Requeue the next required stage for one document version based on stored state."""
 
