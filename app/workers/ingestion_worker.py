@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 
 from app.core.config import get_settings
+from app.core.logging import setup_logging
 from app.db.session import SessionLocal
 from app.services.ingestion_service import process_ingestion_job, recover_orphaned_running_jobs
 from app.services.queue_service import get_redis_client
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+setup_logging(get_settings().log_level)
 logger = logging.getLogger(__name__)
 
 

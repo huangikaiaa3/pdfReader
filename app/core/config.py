@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     storage_root: str = "storage"
+    log_level: str = "INFO"
     ingestion_queue_name: str = "ingestion_jobs"
     ingestion_event_channel: str = "ingestion_events"
     ingestion_max_attempts: int = 3

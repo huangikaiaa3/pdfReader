@@ -35,6 +35,27 @@ The production compose file uses a named volume for:
 
 This avoids tying document persistence to the local source checkout.
 
+## Runtime Observability
+
+The current runtime path now includes:
+
+- `/livez` for lightweight process liveness
+- `/readyz` for database + Redis readiness
+- request logging with request IDs and latency
+- Docker health checks for API, worker, PostgreSQL, and Redis
+
+Request logs now include:
+
+- request ID
+- method
+- path
+- status code
+- duration in milliseconds
+
+You can control log verbosity with:
+
+- `LOG_LEVEL`
+
 ## Startup Scripts
 
 - `docker/api/start.sh`
