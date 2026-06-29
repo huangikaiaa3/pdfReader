@@ -71,6 +71,7 @@ The current runtime path now includes:
 - `/readyz` for database + Redis readiness
 - request logging with request IDs and latency
 - Docker health checks for API, worker, PostgreSQL, and Redis
+- periodic stale-session cleanup in the worker process
 
 Request logs now include:
 
@@ -83,6 +84,18 @@ Request logs now include:
 You can control log verbosity with:
 
 - `LOG_LEVEL`
+
+## Session Runtime Controls
+
+The current temporary-session product also relies on a few runtime guardrails:
+
+- `MAX_UPLOAD_SIZE_BYTES`
+- `MAX_PDF_PAGES`
+- `MAX_SESSION_QUESTION_CHARS`
+- `SESSION_INACTIVITY_TIMEOUT_MINUTES`
+- `SESSION_CLEANUP_INTERVAL_SECONDS`
+
+These help keep the temporary-session backend bounded and prevent the frontend from waiting indefinitely on invalid or over-large inputs.
 
 ## Startup Scripts
 

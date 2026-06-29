@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     ingestion_event_channel: str = "ingestion_events"
     ingestion_max_attempts: int = 3
     max_upload_size_bytes: int = 10 * 1024 * 1024
+    max_pdf_pages: int = 100
+    max_session_question_chars: int = 4000
     session_inactivity_timeout_minutes: int = 60
+    session_cleanup_interval_seconds: int = 60
     gemini_api_key: SecretStr | None = None
     embedding_model: str = "gemini-embedding-2"
     embedding_output_dimensionality: int = 768
@@ -48,8 +51,14 @@ class Settings(BaseSettings):
             raise ValueError("GEMINI_API_KEY is required when ENVIRONMENT=production.")
         if self.max_upload_size_bytes <= 0:
             raise ValueError("MAX_UPLOAD_SIZE_BYTES must be greater than 0.")
+        if self.max_pdf_pages <= 0:
+            raise ValueError("MAX_PDF_PAGES must be greater than 0.")
+        if self.max_session_question_chars <= 0:
+            raise ValueError("MAX_SESSION_QUESTION_CHARS must be greater than 0.")
         if self.session_inactivity_timeout_minutes <= 0:
             raise ValueError("SESSION_INACTIVITY_TIMEOUT_MINUTES must be greater than 0.")
+        if self.session_cleanup_interval_seconds <= 0:
+            raise ValueError("SESSION_CLEANUP_INTERVAL_SECONDS must be greater than 0.")
         return self
 
 

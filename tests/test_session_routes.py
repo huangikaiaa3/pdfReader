@@ -180,6 +180,40 @@ def test_ask_session_question_route_persists_messages(client, db_session, curren
     assert len(messages) == 2
 
 
+def test_ask_session_question_route_rejects_too_long_question(client, db_session, current_user, monkeypatch):
+    session = _create_session(db_session, current_user, status="ready")
+    monkeypatch.setattr(
+        session_service,
+        "get_settings",
+        lambda: SimpleNamespace(max_session_question_chars=5, session_inactivity_timeout_minutes=60),
+    )
+
+    response = client.post(
+        f"/sessions/{session.id}/messages",
+        json={"question": "This question is too long", "top_k": 3},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Question exceeds the maximum allowed length for a session message."
+
+
+def test_ask_session_question_route_returns_clean_error_when_ai_fails(client, db_session, current_user, monkeypatch):
+    session = _create_session(db_session, current_user, status="ready")
+    monkeypatch.setattr(
+        session_service,
+        "ask_document_question",
+        lambda db, document_version_id, question, top_k, current_user: (_ for _ in ()).throw(RuntimeError("Gemini down")),
+    )
+
+    response = client.post(
+        f"/sessions/{session.id}/messages",
+        json={"question": "What is the GPA?", "top_k": 3},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "The AI service is temporarily unavailable. Please try again."
+
+
 def test_end_session_route_deletes_session_artifacts(client, db_session, current_user, monkeypatch):
     session = _create_session(db_session, current_user, status="ready")
     storage_path = session.document_version.storage_path

@@ -266,3 +266,15 @@ The following are intentionally out of scope for this schema pass:
 - OCR-specific fields
 - richer extraction quality metrics
 - business constraints that depend on unresolved product behavior
+
+## Runtime Guardrails
+
+The current temporary-session backend expects the following operational limits from configuration:
+
+- `MAX_UPLOAD_SIZE_BYTES`
+- `MAX_PDF_PAGES`
+- `MAX_SESSION_QUESTION_CHARS`
+- `SESSION_INACTIVITY_TIMEOUT_MINUTES`
+- `SESSION_CLEANUP_INTERVAL_SECONDS`
+
+These are runtime controls rather than schema fields, but they are part of the current product behavior.

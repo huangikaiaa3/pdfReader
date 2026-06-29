@@ -236,3 +236,76 @@ def test_recover_orphaned_running_jobs_ignores_non_running_jobs(db_session, monk
     assert recovered_count == 0
     assert len(jobs) == 1
     assert jobs[0].status == "succeeded"
+
+
+def test_process_extraction_job_fails_when_pdf_exceeds_page_limit(db_session, monkeypatch, current_user):
+    document_version = _create_document_version(db_session, current_user, pipeline_status="extracting")
+    job = IngestionJob(
+        document_version_id=document_version.id,
+        job_type="extract_text",
+        status="pending",
+        attempt_count=1,
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        ingestion_service,
+        "extract_pdf_text",
+        lambda storage_path: {
+            "page_count": 150,
+            "pages": [],
+            "total_char_count": 100,
+            "is_readable": True,
+            "message": None,
+        },
+    )
+    monkeypatch.setattr(
+        ingestion_service,
+        "get_settings",
+        lambda: SimpleNamespace(ingestion_max_attempts=3, max_pdf_pages=100),
+    )
+    monkeypatch.setattr(ingestion_service, "publish_ingestion_event", lambda payload: None)
+    monkeypatch.setattr(ingestion_service, "enqueue_ingestion_job", lambda job_id: None)
+
+    ingestion_service.process_extraction_job(db_session, job)
+
+    db_session.expire_all()
+    refreshed_job = db_session.query(IngestionJob).filter(IngestionJob.id == job.id).first()
+    refreshed_version = db_session.query(DocumentVersion).filter(DocumentVersion.id == document_version.id).first()
+    assert refreshed_job.status == "failed"
+    assert refreshed_job.error_message == "PDF exceeds the maximum allowed page count of 100."
+    assert refreshed_version.pipeline_status == "failed"
+
+
+def test_process_extraction_job_fails_when_source_pdf_is_missing(db_session, monkeypatch, current_user):
+    document_version = _create_document_version(db_session, current_user, pipeline_status="extracting")
+    job = IngestionJob(
+        document_version_id=document_version.id,
+        job_type="extract_text",
+        status="pending",
+        attempt_count=1,
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    def raise_missing(storage_path):
+        raise FileNotFoundError(storage_path)
+
+    monkeypatch.setattr(ingestion_service, "extract_pdf_text", raise_missing)
+    monkeypatch.setattr(
+        ingestion_service,
+        "get_settings",
+        lambda: SimpleNamespace(ingestion_max_attempts=3, max_pdf_pages=100),
+    )
+    monkeypatch.setattr(ingestion_service, "publish_ingestion_event", lambda payload: None)
+    monkeypatch.setattr(ingestion_service, "enqueue_ingestion_job", lambda job_id: None)
+
+    ingestion_service.process_extraction_job(db_session, job)
+
+    db_session.expire_all()
+    refreshed_job = db_session.query(IngestionJob).filter(IngestionJob.id == job.id).first()
+    refreshed_version = db_session.query(DocumentVersion).filter(DocumentVersion.id == document_version.id).first()
+    assert refreshed_job.status == "failed"
+    assert refreshed_job.error_message == "Source PDF is no longer available for this session."
+    assert refreshed_version.pipeline_status == "failed"

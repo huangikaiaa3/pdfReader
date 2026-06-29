@@ -23,6 +23,7 @@ The current focus is:
 - `document_version_id` is an internal pipeline identifier behind the session.
 - `ingestion_job_id` identifies one stage job, not the whole pipeline.
 - session artifacts are temporary and are deleted when the session ends or expires.
+- API failures should return JSON responses so the frontend can show inline errors instead of a full-page server error.
 
 ## Sync vs Async Boundary
 
@@ -76,6 +77,7 @@ Fields:
 - file must not be empty
 - file content type should be `application/pdf`
 - file must not exceed `MAX_UPLOAD_SIZE_BYTES`
+- extracted PDFs must not exceed `MAX_PDF_PAGES`
 
 ### Response
 
@@ -272,6 +274,14 @@ This endpoint performs the grounded answer flow inside the user's single active 
   - a no-answer style fallback instead of forcing a speculative answer
 - The current heuristic uses the best match distance against a configurable threshold.
 
+### Upstream AI failure behavior
+
+- If the Gemini-backed retrieval or answer generation path fails, the API returns a clean JSON error response.
+- The current session message route uses:
+  - `502 Bad Gateway`
+  - `"The AI service is temporarily unavailable. Please try again."`
+- The frontend should display this as an inline or toast error rather than treating it as a full-page navigation failure.
+
 ## Session End Endpoint
 
 ### Route
@@ -317,6 +327,7 @@ This endpoint performs the grounded answer flow inside the user's single active 
 - Automatic retries are only used for retryable runtime failures, not for known terminal states such as unreadable extraction output.
 - Worker startup performs a recovery sweep for orphaned `running` jobs so deploys or crashes do not leave documents stuck forever.
 - Sessions expire after inactivity and their artifacts are deleted.
+- The worker now performs periodic stale-session cleanup even when no user traffic arrives.
 
 ## Deferred Details
 
