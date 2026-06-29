@@ -72,57 +72,6 @@ def test_reset_stage_artifacts_only_removes_stage_outputs(db_session, current_us
     assert db_session.query(ChunkEmbedding).count() == 0
 
 
-def test_recover_document_pipeline_enqueues_missing_embedding_stage(client, db_session, monkeypatch, current_user):
-    queued_job_ids: list[str] = []
-    published_payloads: list[dict] = []
-
-    monkeypatch.setattr(
-        ingestion_service,
-        "enqueue_ingestion_job",
-        lambda job_id: queued_job_ids.append(str(job_id)),
-    )
-    monkeypatch.setattr(
-        ingestion_service,
-        "publish_ingestion_event",
-        lambda payload: published_payloads.append(payload),
-    )
-
-    document_version = _create_document_version(db_session, current_user, pipeline_status="failed")
-    page = DocumentPage(document_version_id=document_version.id, page_number=1, text="Page one", char_count=8)
-    chunk = DocumentChunk(
-        document_version_id=document_version.id,
-        chunk_index=0,
-        start_page_number=1,
-        end_page_number=1,
-        text="Chunk one",
-        char_count=9,
-    )
-    db_session.add(page)
-    db_session.add(chunk)
-    db_session.commit()
-
-    response = client.post(f"/document-versions/{document_version.id}/recover")
-
-    assert response.status_code == 200
-    response_json = response.json()
-    assert response_json["pipeline_status"] == "embedding"
-    assert response_json["message"] == "Enqueued recovery job for stage 'build_embeddings'."
-
-    db_session.expire_all()
-    jobs = (
-        db_session.query(IngestionJob)
-        .filter(IngestionJob.document_version_id == document_version.id)
-        .order_by(IngestionJob.created_at.asc())
-        .all()
-    )
-    assert len(jobs) == 1
-    assert jobs[0].job_type == "build_embeddings"
-    assert jobs[0].status == "pending"
-    assert jobs[0].attempt_count == 1
-    assert queued_job_ids == [str(jobs[0].id)]
-    assert published_payloads[-1]["status"] == "embedding"
-
-
 def test_mark_job_failed_creates_retry_job_for_retryable_failure(db_session, monkeypatch, current_user):
     queued_job_ids: list[str] = []
     published_payloads: list[dict] = []

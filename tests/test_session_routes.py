@@ -77,6 +77,22 @@ def test_create_session_route_rejects_second_active_session(client, db_session, 
     assert response.json()["detail"] == "You already have an active session. End it before starting a new one."
 
 
+def test_create_session_route_rejects_oversized_file(client, monkeypatch):
+    monkeypatch.setattr(
+        session_service,
+        "get_settings",
+        lambda: SimpleNamespace(max_upload_size_bytes=4, session_inactivity_timeout_minutes=60),
+    )
+
+    response = client.post(
+        "/sessions",
+        files={"file": ("sample.pdf", b"%PDF-1.4\nthis is too large\n", "application/pdf")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Uploaded file exceeds the maximum allowed size."
+
+
 def test_create_session_route_expires_stale_session_then_allows_new_one(client, db_session, current_user, monkeypatch):
     stale_time = datetime.now(timezone.utc) - timedelta(minutes=120)
     stale_session = _create_session(db_session, current_user, status="ready", last_activity_at=stale_time)

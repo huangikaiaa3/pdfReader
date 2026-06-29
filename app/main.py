@@ -8,9 +8,6 @@ from fastapi import FastAPI
 from fastapi import Request
 
 from app.api.routes.auth import router as auth_router
-from app.api.routes.conversations import router as conversations_router
-from app.api.routes.documents import router as documents_router
-from app.api.routes.document_events import router as document_events_router
 from app.api.routes.health import router as health_router
 from app.api.routes.sessions import router as sessions_router
 from app.core.config import get_settings
@@ -57,7 +54,4 @@ async def log_requests(request: Request, call_next):
 
 app.include_router(auth_router)
 app.include_router(sessions_router)
-app.include_router(conversations_router)
-app.include_router(documents_router)
-app.include_router(document_events_router)
 app.include_router(health_router)
