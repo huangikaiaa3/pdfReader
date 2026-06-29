@@ -45,6 +45,7 @@ class User(Base):
     documents: Mapped[list["Document"]] = relationship(back_populates="owner_user")
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="owner_user", cascade="all, delete-orphan")
+    sessions: Mapped[list["Session"]] = relationship(back_populates="owner_user", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -86,6 +87,7 @@ class DocumentVersion(Base):
     pages: Mapped[list["DocumentPage"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
     chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
+    sessions: Mapped[list["Session"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
     ingestion_jobs: Mapped[list["IngestionJob"]] = relationship(
         back_populates="document_version", cascade="all, delete-orphan"
     )
@@ -204,3 +206,40 @@ class ConversationMessage(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class Session(Base):
+    """Temporary PDF chat session for one user and one uploaded document version."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    document_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_versions.id"), nullable=False, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    failure_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    owner_user: Mapped[User] = relationship(back_populates="sessions")
+    document_version: Mapped[DocumentVersion] = relationship(back_populates="sessions")
+    messages: Mapped[list["SessionMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+
+
+class SessionMessage(Base):
+    """One user or assistant message stored during a temporary session."""
+
+    __tablename__ = "session_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessions.id"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(50), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    answer_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    citations_json: Mapped[list[dict] | None] = mapped_column(sa.JSON(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    session: Mapped[Session] = relationship(back_populates="messages")

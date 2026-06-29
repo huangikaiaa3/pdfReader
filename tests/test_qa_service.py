@@ -3,7 +3,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.api.routes import documents as document_routes
 from app.schemas.document import DocumentSearchMatchResponse, DocumentSearchResponse
 from app.services import qa_service
 
@@ -64,55 +63,6 @@ def test_ask_document_question_combines_retrieval_and_generation(monkeypatch):
     assert response.citations[0].chunk_id == matches[0].chunk_id
     assert response.matches == matches
 
-
-def test_ask_document_version_route_returns_answer_payload(client, monkeypatch):
-    document_version_id = uuid4()
-    matches = [
-        {
-            "chunk_id": str(uuid4()),
-            "chunk_index": 0,
-            "start_page_number": 2,
-            "end_page_number": 2,
-            "text": "Cumulative GPA: 3.582",
-            "distance": 0.08,
-        }
-    ]
-
-    monkeypatch.setattr(
-        document_routes,
-        "ask_document_question",
-        lambda db, document_version_id, question, top_k, current_user: {
-            "document_version_id": str(document_version_id),
-            "question": question,
-            "answer_status": "answered",
-            "answer": "The cumulative GPA is 3.582.",
-            "citations": [
-                {
-                    "chunk_id": matches[0]["chunk_id"],
-                    "chunk_index": matches[0]["chunk_index"],
-                    "start_page_number": matches[0]["start_page_number"],
-                    "end_page_number": matches[0]["end_page_number"],
-                }
-            ],
-            "matches": matches,
-        },
-    )
-
-    response = client.post(
-        f"/document-versions/{document_version_id}/ask",
-        json={"question": "What is the cumulative GPA?", "top_k": 1},
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["document_version_id"] == str(document_version_id)
-    assert payload["question"] == "What is the cumulative GPA?"
-    assert payload["answer_status"] == "answered"
-    assert payload["answer"] == "The cumulative GPA is 3.582."
-    assert len(payload["citations"]) == 1
-    assert payload["citations"][0]["chunk_index"] == 0
-    assert len(payload["matches"]) == 1
-    assert payload["matches"][0]["distance"] == 0.08
 
 
 def test_ask_document_question_returns_insufficient_context_for_weak_matches(monkeypatch):

@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     ingestion_queue_name: str = "ingestion_jobs"
     ingestion_event_channel: str = "ingestion_events"
     ingestion_max_attempts: int = 3
+    max_upload_size_bytes: int = 10 * 1024 * 1024
+    session_inactivity_timeout_minutes: int = 60
     gemini_api_key: SecretStr | None = None
     embedding_model: str = "gemini-embedding-2"
     embedding_output_dimensionality: int = 768
@@ -44,6 +46,10 @@ class Settings(BaseSettings):
             raise ValueError("STORAGE_BUCKET is required when STORAGE_BACKEND=s3.")
         if self.environment == "production" and self.gemini_api_key is None:
             raise ValueError("GEMINI_API_KEY is required when ENVIRONMENT=production.")
+        if self.max_upload_size_bytes <= 0:
+            raise ValueError("MAX_UPLOAD_SIZE_BYTES must be greater than 0.")
+        if self.session_inactivity_timeout_minutes <= 0:
+            raise ValueError("SESSION_INACTIVITY_TIMEOUT_MINUTES must be greater than 0.")
         return self
 
 
