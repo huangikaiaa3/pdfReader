@@ -16,7 +16,7 @@ def build_chunk_embedding_payloads(document_version: DocumentVersion, document_c
     if not settings.gemini_api_key:
         raise ValueError("GEMINI_API_KEY is not configured.")
 
-    client = genai.Client(api_key=settings.gemini_api_key)
+    client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
     payloads: list[dict] = []
 
     for document_chunk in document_chunks:
@@ -46,7 +46,7 @@ def build_query_embedding(query: str) -> list[float]:
     if not settings.gemini_api_key:
         raise ValueError("GEMINI_API_KEY is not configured.")
 
-    client = genai.Client(api_key=settings.gemini_api_key)
+    client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
     result = client.models.embed_content(
         model=settings.embedding_model,
         contents=query,

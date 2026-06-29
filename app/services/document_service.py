@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentVersion, IngestionJob, User
 from app.schemas.document import (
     DocumentArtifactCountsResponse,
@@ -20,6 +18,7 @@ from app.schemas.document import (
     LatestIngestionJobResponse,
 )
 from app.services.queue_service import enqueue_ingestion_job
+from app.services.storage_service import get_document_storage
 
 
 def upload_document(db: Session, file: UploadFile, current_user: User) -> DocumentUploadResponse:
@@ -42,7 +41,7 @@ def upload_document(db: Session, file: UploadFile, current_user: User) -> Docume
     document_version_id = uuid4()
     ingestion_job_id = uuid4()
 
-    storage_path = _store_uploaded_pdf(document_version_id=document_version_id, file_bytes=file_bytes)
+    storage_object = get_document_storage().store_pdf(document_version_id=document_version_id, file_bytes=file_bytes)
     file_size_bytes = len(file_bytes)
 
     document = Document(
@@ -55,7 +54,7 @@ def upload_document(db: Session, file: UploadFile, current_user: User) -> Docume
         id=document_version_id,
         document_id=document_id,
         original_filename=original_filename,
-        storage_path=str(storage_path),
+        storage_path=storage_object.uri,
         sha256=sha256,
         file_size_bytes=file_size_bytes,
         mime_type=file.content_type,
@@ -82,19 +81,6 @@ def upload_document(db: Session, file: UploadFile, current_user: User) -> Docume
         ingestion_job_id=ingestion_job_id,
         pipeline_status=document_version.pipeline_status,
     )
-
-
-def _store_uploaded_pdf(document_version_id, file_bytes: bytes) -> Path:
-    """Write the uploaded PDF to local storage and return its path."""
-
-    settings = get_settings()
-    documents_dir = Path(settings.storage_root) / "documents"
-    documents_dir.mkdir(parents=True, exist_ok=True)
-    storage_path = documents_dir / f"{document_version_id}.pdf"
-    storage_path.write_bytes(file_bytes)
-    return storage_path
-
-
 def _get_existing_document_version(db: Session, sha256: str, owner_user_id) -> DocumentVersion | None:
     """Return an existing document version for the given checksum, if one exists."""
 

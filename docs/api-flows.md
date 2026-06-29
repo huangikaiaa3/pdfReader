@@ -107,11 +107,12 @@ The current implementation uses local filesystem storage.
 
 Suggested path shape:
 
-`storage/documents/<document_version_id>.pdf`
+`local://documents/<document_version_id>.pdf`
 
 Notes:
-- do not rely on the original filename for the stored path
+- do not rely on the original filename for the stored key
 - UUID-based file naming avoids collisions and unsafe filenames
+- the database stores an opaque storage URI, not a raw local filesystem path
 
 ## Pipeline Status Lifecycle
 

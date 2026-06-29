@@ -8,13 +8,19 @@ from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage,
 from app.services import document_service
 
 
-def test_upload_document_deduplicates_by_checksum(client, db_session, monkeypatch, tmp_path):
+def test_upload_document_deduplicates_by_checksum(client, db_session, monkeypatch):
     queued_job_ids: list[str] = []
 
     monkeypatch.setattr(
         document_service,
-        "get_settings",
-        lambda: SimpleNamespace(storage_root=str(tmp_path)),
+        "get_document_storage",
+        lambda: SimpleNamespace(
+            store_pdf=lambda document_version_id, file_bytes: SimpleNamespace(
+                uri=f"local://documents/{document_version_id}.pdf",
+                backend="local",
+                key=f"documents/{document_version_id}.pdf",
+            )
+        ),
     )
     monkeypatch.setattr(
         document_service,
