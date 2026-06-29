@@ -209,3 +209,81 @@ def test_mark_job_failed_stops_retry_for_terminal_failure(db_session, monkeypatc
     assert jobs[0].status == "failed"
     assert refreshed_document_version.pipeline_status == "failed"
     assert published_payloads[-1]["status"] == "failed"
+
+
+def test_recover_orphaned_running_jobs_requeues_running_jobs(db_session, monkeypatch, current_user):
+    queued_job_ids: list[str] = []
+    published_payloads: list[dict] = []
+
+    monkeypatch.setattr(
+        ingestion_service,
+        "enqueue_ingestion_job",
+        lambda job_id: queued_job_ids.append(str(job_id)),
+    )
+    monkeypatch.setattr(
+        ingestion_service,
+        "publish_ingestion_event",
+        lambda payload: published_payloads.append(payload),
+    )
+    monkeypatch.setattr(
+        ingestion_service,
+        "get_settings",
+        lambda: SimpleNamespace(ingestion_max_attempts=3),
+    )
+
+    document_version = _create_document_version(db_session, current_user, pipeline_status="chunking")
+    running_job = IngestionJob(
+        document_version_id=document_version.id,
+        job_type="chunk_text",
+        status="running",
+        attempt_count=1,
+    )
+    db_session.add(running_job)
+    db_session.commit()
+
+    recovered_count = ingestion_service.recover_orphaned_running_jobs(db_session)
+
+    db_session.expire_all()
+    jobs = (
+        db_session.query(IngestionJob)
+        .filter(IngestionJob.document_version_id == document_version.id)
+        .order_by(IngestionJob.created_at.asc())
+        .all()
+    )
+    refreshed_document_version = db_session.query(DocumentVersion).filter(DocumentVersion.id == document_version.id).first()
+
+    assert recovered_count == 1
+    assert len(jobs) == 2
+    assert jobs[0].status == "failed"
+    assert jobs[0].error_message == "Worker restarted before completing this job."
+    assert jobs[1].job_type == "chunk_text"
+    assert jobs[1].status == "pending"
+    assert jobs[1].attempt_count == 2
+    assert refreshed_document_version.pipeline_status == "chunking"
+    assert queued_job_ids == [str(jobs[1].id)]
+    assert published_payloads[-1]["status"] == "chunking"
+
+
+def test_recover_orphaned_running_jobs_ignores_non_running_jobs(db_session, monkeypatch, current_user):
+    monkeypatch.setattr(
+        ingestion_service,
+        "get_settings",
+        lambda: SimpleNamespace(ingestion_max_attempts=3),
+    )
+
+    document_version = _create_document_version(db_session, current_user, pipeline_status="ready")
+    finished_job = IngestionJob(
+        document_version_id=document_version.id,
+        job_type="build_embeddings",
+        status="succeeded",
+        attempt_count=1,
+    )
+    db_session.add(finished_job)
+    db_session.commit()
+
+    recovered_count = ingestion_service.recover_orphaned_running_jobs(db_session)
+
+    jobs = db_session.query(IngestionJob).filter(IngestionJob.document_version_id == document_version.id).all()
+    assert recovered_count == 0
+    assert len(jobs) == 1
+    assert jobs[0].status == "succeeded"

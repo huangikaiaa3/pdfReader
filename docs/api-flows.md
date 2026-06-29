@@ -438,7 +438,8 @@ Notes:
 8. The worker updates `document_versions.pipeline_status` to `embedding`.
 9. If embeddings succeed, the worker updates `document_versions.pipeline_status` to `ready`.
 10. On any stage failure, the worker updates `document_versions.pipeline_status` to `failed`.
-11. The SSE endpoint forwards matching events to connected frontend clients.
+11. On worker startup, any orphaned `running` jobs left behind by a previous worker process are failed and requeued when retry budget remains.
+12. The SSE endpoint forwards matching events to connected frontend clients.
 
 ## State Ownership
 
@@ -454,6 +455,7 @@ Notes:
 - Re-running `build_embeddings` replaces embeddings for the existing chunks of that document version.
 - Retry attempts create a new `ingestion_jobs` row with an incremented `attempt_count`.
 - Automatic retries are only used for retryable runtime failures, not for known terminal states such as unreadable extraction output.
+- Worker startup performs a recovery sweep for orphaned `running` jobs so deploys or crashes do not leave documents stuck forever.
 
 ## Deferred Details
 

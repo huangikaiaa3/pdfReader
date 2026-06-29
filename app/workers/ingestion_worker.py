@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 
 from app.core.config import get_settings
-from app.services.ingestion_service import process_ingestion_job
+from app.db.session import SessionLocal
+from app.services.ingestion_service import process_ingestion_job, recover_orphaned_running_jobs
 from app.services.queue_service import get_redis_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -17,6 +18,15 @@ def main() -> None:
 
     settings = get_settings()
     client = get_redis_client()
+    db = SessionLocal()
+    try:
+        recovered_count = recover_orphaned_running_jobs(db)
+    finally:
+        db.close()
+
+    if recovered_count:
+        logger.warning("Recovered %s orphaned running ingestion job(s) on startup.", recovered_count)
+
     logger.info("Ingestion worker started. Waiting on queue '%s'.", settings.ingestion_queue_name)
 
     while True:
