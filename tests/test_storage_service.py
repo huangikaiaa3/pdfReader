@@ -58,3 +58,13 @@ def test_settings_require_gemini_key_in_production():
             database_url="postgresql+psycopg://postgres:postgres@localhost:5432/pdfreader",
             redis_url="redis://localhost:6379/0",
         )
+
+
+def test_settings_normalize_provider_postgres_url():
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql://postgres:postgres@localhost:5432/pdfreader",
+        redis_url="redis://localhost:6379/0",
+    )
+
+    assert settings.database_url == "postgresql+psycopg://postgres:postgres@localhost:5432/pdfreader"

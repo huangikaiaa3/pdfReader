@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     def validate_runtime_settings(self) -> "Settings":
         """Validate environment combinations that matter in deployed runtimes."""
 
+        if self.database_url.startswith("postgres://"):
+            self.database_url = self.database_url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif self.database_url.startswith("postgresql://") and "+psycopg" not in self.database_url.split("://", 1)[0]:
+            self.database_url = self.database_url.replace("postgresql://", "postgresql+psycopg://", 1)
         if self.storage_backend not in {"local", "s3"}:
             raise ValueError("STORAGE_BACKEND must be 'local' or 's3'.")
         if self.storage_backend == "s3" and not self.storage_bucket:
