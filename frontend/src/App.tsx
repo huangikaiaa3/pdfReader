@@ -380,7 +380,6 @@ export default function App() {
 
         <section className="profile-card">
           <p className="profile-name">{currentUser.display_name}</p>
-          <p className="profile-email">{currentUser.email}</p>
           <p className="profile-status">{statusLabel(session)}</p>
         </section>
 

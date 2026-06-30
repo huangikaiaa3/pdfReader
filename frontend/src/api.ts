@@ -32,9 +32,9 @@ async function apiRequest<T>(path: string, options: RequestOptions = {}): Promis
   if (!response.ok) {
     let detail = `Request failed with status ${response.status}.`;
     try {
-      const payload = (await response.json()) as { detail?: string };
-      if (payload.detail) {
-        detail = payload.detail;
+      const payload = (await response.json()) as { detail?: unknown };
+      if (payload.detail !== undefined) {
+        detail = normalizeErrorDetail(payload.detail);
       }
     } catch {
       // Ignore JSON parse failures and preserve the fallback message.
@@ -43,6 +43,26 @@ async function apiRequest<T>(path: string, options: RequestOptions = {}): Promis
   }
 
   return (await response.json()) as T;
+}
+
+function normalizeErrorDetail(detail: unknown): string {
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => normalizeErrorDetail(item)).filter(Boolean);
+    return messages.length > 0 ? messages.join(" ") : "Request failed.";
+  }
+
+  if (detail && typeof detail === "object") {
+    if ("msg" in detail && typeof detail.msg === "string") {
+      return detail.msg;
+    }
+    return JSON.stringify(detail);
+  }
+
+  return "Request failed.";
 }
 
 export const api = {
@@ -138,9 +158,9 @@ async function consumeSessionEvents(
     if (!response.ok) {
       let detail = `Session event stream failed with status ${response.status}.`;
       try {
-        const payload = (await response.json()) as { detail?: string };
-        if (payload.detail) {
-          detail = payload.detail;
+        const payload = (await response.json()) as { detail?: unknown };
+        if (payload.detail !== undefined) {
+          detail = normalizeErrorDetail(payload.detail);
         }
       } catch {
         // Preserve the fallback message when the response is not JSON.

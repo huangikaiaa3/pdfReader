@@ -246,7 +246,6 @@ button {
   font-weight: 600;
 }
 
-.profile-email,
 .profile-status {
   margin: 6px 0 0;
   color: rgba(234, 239, 234, 0.68);
@@ -285,7 +284,7 @@ button {
 
 .chat-header h1 {
   margin: 10px 0 0;
-  font-size: clamp(1.5rem, 2vw, 2.25rem);
+  font-size: clamp(1.05rem, 1.45vw, 1.55rem);
   letter-spacing: -0.04em;
 }
 
