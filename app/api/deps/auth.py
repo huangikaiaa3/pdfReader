@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import User
 from app.db.session import get_db
-from app.services.auth_service import authenticate_api_key
+from app.services.auth_service import authenticate_bearer_credential
 
 
 def get_current_user(
@@ -29,4 +29,4 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header must use Bearer token format.",
         )
-    return authenticate_api_key(db, token)
+    return authenticate_bearer_credential(db, token)

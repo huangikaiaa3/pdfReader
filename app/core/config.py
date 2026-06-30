@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    auth_session_ttl_days: int = 30
     storage_backend: str = "local"
     storage_root: str = "storage"
     storage_bucket: str | None = None
@@ -56,6 +57,8 @@ class Settings(BaseSettings):
             raise ValueError("GEMINI_API_KEY is required when ENVIRONMENT=production.")
         if self.max_upload_size_bytes <= 0:
             raise ValueError("MAX_UPLOAD_SIZE_BYTES must be greater than 0.")
+        if self.auth_session_ttl_days <= 0:
+            raise ValueError("AUTH_SESSION_TTL_DAYS must be greater than 0.")
         if self.max_pdf_pages <= 0:
             raise ValueError("MAX_PDF_PAGES must be greater than 0.")
         if self.max_session_question_chars <= 0:

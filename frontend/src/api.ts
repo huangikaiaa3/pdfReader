@@ -1,6 +1,6 @@
 import type {
   AuthMeResponse,
-  AuthRegisterResponse,
+  AuthSessionResponse,
   Session,
   SessionAskResponse,
   SessionEventPayload,
@@ -48,8 +48,16 @@ async function apiRequest<T>(path: string, options: RequestOptions = {}): Promis
 export const api = {
   baseUrl: API_BASE_URL,
 
-  register(payload: { email: string; display_name: string; api_key_name: string }) {
-    return apiRequest<AuthRegisterResponse>("/auth/register", {
+  register(payload: { email: string; display_name: string; password: string }) {
+    return apiRequest<AuthSessionResponse>("/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  login(payload: { email: string; password: string }) {
+    return apiRequest<AuthSessionResponse>("/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -58,6 +66,13 @@ export const api = {
 
   getMe(apiKey: string) {
     return apiRequest<AuthMeResponse>("/auth/me", { apiKey });
+  },
+
+  logout(apiKey: string) {
+    return apiRequest<{ message: string }>("/auth/logout", {
+      method: "POST",
+      apiKey,
+    });
   },
 
   getCurrentSession(apiKey: string) {

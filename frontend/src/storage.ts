@@ -1,18 +1,18 @@
 import type { User } from "./types";
 
-const API_KEY_STORAGE_KEY = "pdfreader.apiKey";
+const AUTH_TOKEN_STORAGE_KEY = "pdfreader.authToken";
 const USER_STORAGE_KEY = "pdfreader.user";
 
-export function loadApiKey() {
-  return window.localStorage.getItem(API_KEY_STORAGE_KEY);
+export function loadAuthToken() {
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
 }
 
-export function saveApiKey(apiKey: string) {
-  window.localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
+export function saveAuthToken(authToken: string) {
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, authToken);
 }
 
-export function clearApiKey() {
-  window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+export function clearAuthToken() {
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
 }
 
 export function loadUser(): User | null {

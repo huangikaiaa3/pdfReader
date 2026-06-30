@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
-import { clearApiKey, clearUser, loadApiKey, loadUser, saveApiKey, saveUser } from "./storage";
+import { clearAuthToken, clearUser, loadAuthToken, loadUser, saveAuthToken, saveUser } from "./storage";
 import type { SearchMatch, Session, SessionEventPayload, SessionMessage, User } from "./types";
 
 type AuthMode = "signin" | "signup";
@@ -34,7 +34,7 @@ function statusLabel(session: Session | null) {
 
 export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>("signin");
-  const [apiKey, setApiKey] = useState<string | null>(() => loadApiKey());
+  const [authToken, setAuthToken] = useState<string | null>(() => loadAuthToken());
   const [user, setUser] = useState<User | null>(() => loadUser());
   const [session, setSession] = useState<Session | null>(null);
   const [matches, setMatches] = useState<SearchMatch[]>([]);
@@ -48,9 +48,12 @@ export default function App() {
   const [signupValues, setSignupValues] = useState({
     email: "",
     display_name: "",
-    api_key_name: "browser",
+    password: "",
   });
-  const [signinKey, setSigninKey] = useState("");
+  const [signinValues, setSigninValues] = useState({
+    email: "",
+    password: "",
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const eventSourceRef = useRef<{ close: () => void } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -60,21 +63,21 @@ export default function App() {
   }, [session?.messages, session?.status]);
 
   useEffect(() => {
-    if (!apiKey) {
+    if (!authToken) {
       return;
     }
 
     let cancelled = false;
     setIsSessionLoading(true);
     setAppError(null);
-    api.getMe(apiKey)
+    api.getMe(authToken)
       .then((response) => {
         if (cancelled) {
           return;
         }
         setUser(response.user);
         saveUser(response.user);
-        return api.getCurrentSession(apiKey)
+        return api.getCurrentSession(authToken)
           .then((activeSession) => {
             if (!cancelled) {
               setSession(activeSession);
@@ -93,9 +96,9 @@ export default function App() {
         if (cancelled) {
           return;
         }
-        clearApiKey();
+        clearAuthToken();
         clearUser();
-        setApiKey(null);
+        setAuthToken(null);
         setUser(null);
         setAuthError(error.message);
       })
@@ -108,16 +111,16 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [apiKey]);
+  }, [authToken]);
 
   useEffect(() => {
-    if (!apiKey || !session || (session.status !== "ingesting" && session.status !== "failed")) {
+    if (!authToken || !session || (session.status !== "ingesting" && session.status !== "failed")) {
       return;
     }
 
     eventSourceRef.current?.close();
     const source = api.subscribeToSessionEvents(
-      apiKey,
+      authToken,
       session.session_id,
       (payload) => {
         handleSessionEvent(payload);
@@ -131,7 +134,7 @@ export default function App() {
     return () => {
       source.close();
     };
-  }, [apiKey, session?.session_id, session?.status]);
+  }, [authToken, session?.session_id, session?.status]);
 
   function handleSessionEvent(payload: SessionEventPayload) {
     setSession((currentSession) => {
@@ -155,12 +158,12 @@ export default function App() {
     setSuccessMessage(null);
     try {
       const response = await api.register(signupValues);
-      saveApiKey(response.api_key);
+      saveAuthToken(response.access_token);
       saveUser(response.user);
-      setApiKey(response.api_key);
+      setAuthToken(response.access_token);
       setUser(response.user);
-      setSigninKey(response.api_key);
-      setSuccessMessage("Account created. Your API key is now stored in this browser for this app.");
+      setSigninValues({ email: signupValues.email, password: "" });
+      setSuccessMessage("Account created. You are now signed in on this browser.");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Could not create your account.");
     } finally {
@@ -170,24 +173,24 @@ export default function App() {
 
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsAuthLoading(true);
-    setAuthError(null);
-    setSuccessMessage(null);
+      setIsAuthLoading(true);
+      setAuthError(null);
+      setSuccessMessage(null);
     try {
-      const response = await api.getMe(signinKey);
-      saveApiKey(signinKey);
+      const response = await api.login(signinValues);
+      saveAuthToken(response.access_token);
       saveUser(response.user);
-      setApiKey(signinKey);
+      setAuthToken(response.access_token);
       setUser(response.user);
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Could not verify that API key.");
+      setAuthError(error instanceof Error ? error.message : "Could not sign you in.");
     } finally {
       setIsAuthLoading(false);
     }
   }
 
   async function handleUpload(file: File) {
-    if (!apiKey) {
+    if (!authToken) {
       return;
     }
     setIsSessionLoading(true);
@@ -195,7 +198,7 @@ export default function App() {
     setSuccessMessage(null);
     setMatches([]);
     try {
-      const nextSession = await api.createSession(apiKey, file);
+      const nextSession = await api.createSession(authToken, file);
       setSession(nextSession);
     } catch (error) {
       setAppError(error instanceof Error ? error.message : "Upload failed.");
@@ -206,13 +209,13 @@ export default function App() {
 
   async function handleQuestionSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!apiKey || !session || !question.trim()) {
+    if (!authToken || !session || !question.trim()) {
       return;
     }
     setIsAsking(true);
     setAppError(null);
     try {
-      const response = await api.askQuestion(apiKey, session.session_id, {
+      const response = await api.askQuestion(authToken, session.session_id, {
         question: question.trim(),
         top_k: TOP_K,
       });
@@ -240,12 +243,12 @@ export default function App() {
   }
 
   async function handleEndSession() {
-    if (!apiKey || !session) {
+    if (!authToken || !session) {
       return;
     }
     setAppError(null);
     try {
-      await api.endSession(apiKey, session.session_id);
+      await api.endSession(authToken, session.session_id);
       setSession(null);
       setMatches([]);
       setSuccessMessage("Session ended. Upload another PDF whenever you're ready.");
@@ -255,19 +258,26 @@ export default function App() {
     }
   }
 
-  function handleSignOut() {
-    clearApiKey();
+  async function handleSignOut() {
+    if (authToken) {
+      try {
+        await api.logout(authToken);
+      } catch {
+        // Local sign-out should still complete even if the token is already invalid.
+      }
+    }
+    clearAuthToken();
     clearUser();
-    setApiKey(null);
+    setAuthToken(null);
     setUser(null);
     setSession(null);
     setMatches([]);
     setQuestion("");
-    setSigninKey("");
+    setSigninValues({ email: "", password: "" });
     eventSourceRef.current?.close();
   }
 
-  const isAuthenticated = Boolean(apiKey && user);
+  const isAuthenticated = Boolean(authToken && user);
 
   if (!isAuthenticated) {
     return (
@@ -278,14 +288,14 @@ export default function App() {
             <p className="eyebrow">Temporary PDF chat</p>
             <h1>Talk to one document at a time.</h1>
             <p className="subtle">
-              Sign up for a new API key or paste an existing one. After that, the app jumps straight into an upload-first chat workspace.
+              Create an account or log in, then jump straight into an upload-first chat workspace for one live PDF.
             </p>
           </div>
 
           <div className="auth-card">
             <div className="auth-tabs">
               <button className={authMode === "signin" ? "active" : ""} onClick={() => setAuthMode("signin")} type="button">
-                Use API key
+                Log in
               </button>
               <button className={authMode === "signup" ? "active" : ""} onClick={() => setAuthMode("signup")} type="button">
                 Sign up
@@ -295,17 +305,25 @@ export default function App() {
             {authMode === "signin" ? (
               <form className="auth-form" onSubmit={handleSignIn}>
                 <label>
-                  API key
-                  <textarea
-                    rows={4}
-                    placeholder="pdr_..."
-                    value={signinKey}
-                    onChange={(event) => setSigninKey(event.target.value)}
+                  Email
+                  <input
+                    type="email"
+                    value={signinValues.email}
+                    onChange={(event) => setSigninValues((current) => ({ ...current, email: event.target.value }))}
+                    required
+                  />
+                </label>
+                <label>
+                  Password
+                  <input
+                    type="password"
+                    value={signinValues.password}
+                    onChange={(event) => setSigninValues((current) => ({ ...current, password: event.target.value }))}
                     required
                   />
                 </label>
                 <button className="primary-button" disabled={isAuthLoading} type="submit">
-                  {isAuthLoading ? "Checking key..." : "Continue"}
+                  {isAuthLoading ? "Signing in..." : "Log in"}
                 </button>
               </form>
             ) : (
@@ -329,11 +347,11 @@ export default function App() {
                   />
                 </label>
                 <label>
-                  API key label
+                  Password
                   <input
-                    type="text"
-                    value={signupValues.api_key_name}
-                    onChange={(event) => setSignupValues((current) => ({ ...current, api_key_name: event.target.value }))}
+                    type="password"
+                    value={signupValues.password}
+                    onChange={(event) => setSignupValues((current) => ({ ...current, password: event.target.value }))}
                     required
                   />
                 </label>

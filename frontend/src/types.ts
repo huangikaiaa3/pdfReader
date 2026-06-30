@@ -10,6 +10,12 @@ export type AuthRegisterResponse = {
   api_key_prefix: string;
 };
 
+export type AuthSessionResponse = {
+  user: User;
+  access_token: string;
+  token_type: "bearer";
+};
+
 export type AuthMeResponse = {
   user: User;
 };
