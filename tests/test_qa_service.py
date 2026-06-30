@@ -144,3 +144,45 @@ def test_ask_document_question_marks_generated_no_answer_as_insufficient_context
     assert response.answer_status == "insufficient_context"
     assert response.answer == "I could not find the advisor email address in the document."
     assert response.citations == []
+
+
+def test_ask_document_question_allows_summary_style_question_with_weaker_match(monkeypatch):
+    document_version_id = uuid4()
+    current_user = SimpleNamespace(id=uuid4())
+    matches = [
+        _build_match(chunk_index=0, text="This is a proof of good standing during tenancy for I-Kai Huang at 485 Marin Blvd.", distance=0.58),
+        _build_match(chunk_index=1, text="Authorized agent signature block.", distance=0.66),
+    ]
+    search_response = DocumentSearchResponse(
+        document_version_id=document_version_id,
+        query="What is this document about?",
+        matches=matches,
+    )
+
+    monkeypatch.setattr(
+        qa_service,
+        "search_document_chunks",
+        lambda db, document_version_id, query, top_k, current_user: search_response,
+    )
+    monkeypatch.setattr(
+        qa_service,
+        "answer_question_with_context",
+        lambda question, matches: "This document is a proof of good standing during tenancy for I-Kai Huang.",
+    )
+    monkeypatch.setattr(
+        qa_service,
+        "get_settings",
+        lambda: SimpleNamespace(answer_citation_count=2, retrieval_weak_match_max_distance=0.4),
+    )
+
+    response = qa_service.ask_document_question(
+        db=None,
+        document_version_id=document_version_id,
+        question="What is this document about?",
+        top_k=2,
+        current_user=current_user,
+    )
+
+    assert response.answer_status == "answered"
+    assert response.answer == "This document is a proof of good standing during tenancy for I-Kai Huang."
+    assert len(response.citations) == 2

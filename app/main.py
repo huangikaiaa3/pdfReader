@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import FastAPI
 from fastapi import Request
 from fastapi import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes.auth import router as auth_router
@@ -20,6 +21,13 @@ setup_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.app_name)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origin_list,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
