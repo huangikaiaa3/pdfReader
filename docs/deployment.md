@@ -4,6 +4,10 @@
 
 This document captures the current production-oriented container runtime path for the PDF reader backend.
 
+Latest FastAPI Cloud redeploy trigger note:
+
+- June 30, 2026: docs-only commit used to trigger a fresh default-branch deployment after environment variables were updated in FastAPI Cloud.
+
 ## FastAPI Cloud Build Baseline
 
 FastAPI Cloud uses the latest supported Python version by default unless the app pins a version.
