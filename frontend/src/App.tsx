@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
 import { clearAuthToken, clearUser, loadAuthToken, loadUser, saveAuthToken, saveUser } from "./storage";
-import type { SearchMatch, Session, SessionEventPayload, SessionMessage, User } from "./types";
+import type { Session, SessionEventPayload, SessionMessage, User } from "./types";
 
 type AuthMode = "signin" | "signup";
 
@@ -37,7 +37,6 @@ export default function App() {
   const [authToken, setAuthToken] = useState<string | null>(() => loadAuthToken());
   const [user, setUser] = useState<User | null>(() => loadUser());
   const [session, setSession] = useState<Session | null>(null);
-  const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [question, setQuestion] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
@@ -196,7 +195,6 @@ export default function App() {
     setIsSessionLoading(true);
     setAppError(null);
     setSuccessMessage(null);
-    setMatches([]);
     try {
       const nextSession = await api.createSession(authToken, file);
       setSession(nextSession);
@@ -233,7 +231,6 @@ export default function App() {
           last_activity_at: response.assistant_message.updated_at,
         };
       });
-      setMatches(response.matches);
       setQuestion("");
     } catch (error) {
       setAppError(error instanceof Error ? error.message : "Could not send that question.");
@@ -250,7 +247,6 @@ export default function App() {
     try {
       await api.endSession(authToken, session.session_id);
       setSession(null);
-      setMatches([]);
       setSuccessMessage("Session ended. Upload another PDF whenever you're ready.");
       eventSourceRef.current?.close();
     } catch (error) {
@@ -271,7 +267,6 @@ export default function App() {
     setAuthToken(null);
     setUser(null);
     setSession(null);
-    setMatches([]);
     setQuestion("");
     setSigninValues({ email: "", password: "" });
     eventSourceRef.current?.close();
@@ -377,7 +372,6 @@ export default function App() {
         <div className="sidebar-header">
           <div>
             <p className="eyebrow">pdfReader</p>
-            <h2>One live document</h2>
           </div>
           <button className="ghost-button" onClick={handleSignOut} type="button">
             Sign out
@@ -402,7 +396,6 @@ export default function App() {
 
           {session ? (
             <>
-              <p className="session-title">{session.title}</p>
               <dl className="meta-list">
                 <div>
                   <dt>Status</dt>
@@ -425,28 +418,6 @@ export default function App() {
             </>
           ) : (
             <p className="subtle">No active session yet. Upload one PDF to begin.</p>
-          )}
-        </section>
-
-        <section className="source-card">
-          <h3>Retrieved context</h3>
-          {matches.length === 0 ? (
-            <p className="subtle">Chunk matches will appear here after you ask a question.</p>
-          ) : (
-            <ul className="match-list">
-              {matches.map((match) => (
-                <li key={match.chunk_id}>
-                  <div className="match-topline">
-                    <span>Chunk {match.chunk_index}</span>
-                    <span>
-                      pp. {match.start_page_number}
-                      {match.end_page_number !== match.start_page_number ? `-${match.end_page_number}` : ""}
-                    </span>
-                  </div>
-                  <p>{match.text}</p>
-                </li>
-              ))}
-            </ul>
           )}
         </section>
       </aside>

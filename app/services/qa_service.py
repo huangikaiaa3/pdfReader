@@ -15,7 +15,7 @@ def ask_document_question(db, document_version_id, question: str, top_k: int, cu
     )
 
     citations = _build_citations(search_response.matches)
-    if not _has_sufficient_context(search_response.matches):
+    if not _has_sufficient_context(search_response.matches, question):
         return DocumentAskResponse(
             document_version_id=search_response.document_version_id,
             question=question,
@@ -62,7 +62,7 @@ def _build_citations(matches) -> list[DocumentCitationResponse]:
     ]
 
 
-def _has_sufficient_context(matches) -> bool:
+def _has_sufficient_context(matches, question: str) -> bool:
     """Return whether the retrieved matches look strong enough to ground an answer."""
 
     if not matches:
@@ -70,7 +70,27 @@ def _has_sufficient_context(matches) -> bool:
 
     settings = get_settings()
     best_distance = min(match.distance for match in matches)
+    if _is_summary_style_question(question):
+        return best_distance <= max(settings.retrieval_weak_match_max_distance, 0.7)
     return best_distance <= settings.retrieval_weak_match_max_distance
+
+
+def _is_summary_style_question(question: str) -> bool:
+    """Return whether a question is asking for a broad summary of the document."""
+
+    normalized_question = question.lower()
+    summary_markers = [
+        "what is this document about",
+        "what's this document about",
+        "what is the document about",
+        "what's the document about",
+        "summarize this document",
+        "summarise this document",
+        "give me a summary",
+        "what does this document say",
+        "what is this about",
+    ]
+    return any(marker in normalized_question for marker in summary_markers)
 
 
 def _is_no_answer_response(answer: str) -> bool:
