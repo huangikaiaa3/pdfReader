@@ -4,6 +4,23 @@
 
 This document captures the current production-oriented container runtime path for the PDF reader backend.
 
+## FastAPI Cloud Build Baseline
+
+FastAPI Cloud uses the latest supported Python version by default unless the app pins a version.
+
+This project now pins Python in [pyproject.toml](/Users/wixx3r/Documents/pdfReader/pdfReader/pyproject.toml) with:
+
+- `requires-python = "==3.10.*"`
+- `[tool.fastapi] entrypoint = "app.main:app"`
+
+Why this matters:
+
+- our dependency set currently includes `psycopg[binary]==3.2.9`
+- that package has wheels for Python `3.10` through `3.13`, but not `3.14`
+- without a Python pin, FastAPI Cloud may try Python `3.14` and fail the build before the app even starts
+
+This keeps the cloud runtime aligned with the local Docker image, which already uses `python:3.10-slim`.
+
 ## Development vs Production Compose
 
 Development:
