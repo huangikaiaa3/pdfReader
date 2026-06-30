@@ -7,6 +7,22 @@ name = "pdfreader"
 version = "0.1.0"
 description = "Temporary PDF chat backend built with FastAPI."
 requires-python = "==3.10.*"
+dependencies = [
+    "alembic==1.16.2",
+    "cryptography==45.0.4",
+    "email-validator==2.2.0",
+    "fastapi[standard]==0.115.12",
+    "google-genai==2.10.0",
+    "pgvector",
+    "psycopg[binary]==3.2.9",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.9.1",
+    "pypdf==5.6.0",
+    "python-multipart==0.0.20",
+    "redis==5.2.1",
+    "sqlalchemy==2.0.41",
+    "uvicorn[standard]==0.34.2",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
