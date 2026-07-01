@@ -6,7 +6,7 @@ This frontend is a React + Vite single-page app for the temporary PDF chat backe
 
 ## Main Flow
 
-1. Sign up or paste an existing API key.
+1. Sign up or log in with email and password.
 2. Load the current user and active session.
 3. If no session exists, upload one PDF.
 4. Wait for live ingestion updates.
@@ -24,4 +24,8 @@ Expected environment variable:
 
 Default backend target:
 
-- `https://pdfreader.fastapicloud.dev`
+- `http://127.0.0.1:8000`
+
+For the EC2 deployment path, point `VITE_API_BASE_URL` at the public backend URL for the EC2 stack, for example:
+
+- `http://<ec2-public-ip>:8000`

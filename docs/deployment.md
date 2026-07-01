@@ -1,143 +1,158 @@
 # Deployment Notes
 
-## Purpose
+## Preferred Runtime
 
-This document captures the current production-oriented container runtime path for the PDF reader backend.
+The current preferred deployment shape is:
 
-Latest FastAPI Cloud redeploy trigger note:
+- frontend on Vercel
+- backend API on one EC2 instance
+- ingestion worker on the same EC2 instance
+- PostgreSQL on the same EC2 instance
+- Redis on the same EC2 instance
 
-- June 30, 2026: docs-only commit used to trigger a fresh default-branch deployment after environment variables were updated in FastAPI Cloud.
+This keeps the whole backend stack in one Docker Compose runtime and avoids the shared-storage mismatch we hit with:
 
-## FastAPI Cloud Build Baseline
+- backend on FastAPI Cloud
+- worker on EC2
+- `STORAGE_BACKEND=local`
 
-FastAPI Cloud uses the latest supported Python version by default unless the app pins a version.
+That split deployment failed because uploaded PDFs were written to the backend container filesystem, while the worker was trying to read them from a different machine.
 
-This project now pins Python in [pyproject.toml](/Users/wixx3r/Documents/pdfReader/pdfReader/pyproject.toml) with:
+## Why EC2 Compose Is Simpler For This App
 
-- `requires-python = "==3.10.*"`
-- `[tool.fastapi] entrypoint = "app.main:app"`
+This app currently relies on local filesystem storage for uploaded PDFs:
 
-Why this matters:
+- `STORAGE_BACKEND=local`
+- `STORAGE_ROOT=/app/storage`
 
-- our dependency set currently includes `psycopg[binary]==3.2.9`
-- that package has wheels for Python `3.10` through `3.13`, but not `3.14`
-- without a Python pin, FastAPI Cloud may try Python `3.14` and fail the build before the app even starts
+When the API and worker share one EC2 host and one Docker volume:
 
-This keeps the cloud runtime aligned with the local Docker image, which already uses `python:3.10-slim`.
+- the API writes uploaded PDFs once
+- the worker reads the same files
+- no object storage is required yet
 
-## Development vs Production Compose
+For the current temporary PDF chat product, this is the simplest reliable runtime shape.
 
-Development:
+## Compose File
 
-- `docker-compose.yml`
-- uses bind mounts
-- uses `uvicorn --reload`
-- optimized for local iteration
+Use:
 
-Production-style runtime:
+- [docker-compose.prod.yml](/Users/wixx3r/Documents/pdfReader/pdfReader/docker-compose.prod.yml)
 
-- `docker-compose.prod.yml`
-- does not mount the source tree
-- stores uploaded documents in a named Docker volume
-- runs database migrations on API and worker startup
-- uses restart policies for long-running services
+This stack runs:
 
-## Production Compose Command
+- `api`
+- `worker`
+- `postgres`
+- `redis`
+
+It also uses Docker-managed volumes for:
+
+- uploaded PDFs
+- PostgreSQL data
+- Redis data
+
+## Environment File
+
+Start from:
+
+- [.env.ec2.example](/Users/wixx3r/Documents/pdfReader/pdfReader/.env.ec2.example)
+
+Create the real runtime file on the EC2 host as `.env`.
+
+Important values:
+
+- `ENVIRONMENT=production`
+- `DATABASE_URL=postgresql+psycopg://postgres:<password>@postgres:5432/pdfreader`
+- `REDIS_URL=redis://redis:6379/0`
+- `STORAGE_BACKEND=local`
+- `STORAGE_ROOT=/app/storage`
+- `GEMINI_API_KEY=<your key>`
+- `CORS_ALLOWED_ORIGINS=https://pdf-reader-virid.vercel.app`
+- `POSTGRES_PASSWORD=<same password used by the postgres container>`
+
+## EC2 Startup Command
 
 ```bash
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
+## Expected Public Entry Point
+
+With the current compose file, the API is published on:
+
+- `http://<ec2-public-ip>:8000`
+
+The frontend can point `VITE_API_BASE_URL` at that address.
+
+Example:
+
+- `VITE_API_BASE_URL=http://51.20.107.183:8000`
+
 ## Storage Behavior
 
-The production compose file uses a named volume for:
+The `api` and `worker` services both mount the same Docker volume at:
 
-- uploaded PDFs at `/app/storage`
+- `/app/storage`
 
-This avoids tying document persistence to the local source checkout.
+That is what makes local document storage safe again in this deployment shape.
 
-## Storage Abstraction
+Persisted `document_versions.storage_path` values still look like:
 
-The backend now treats document storage as an abstraction instead of assuming local disk everywhere.
+- `local://documents/<document-version-id>.pdf`
 
-Current behavior:
+## Health And Startup
 
-- `STORAGE_BACKEND=local`
-- uploaded PDFs are stored under `STORAGE_ROOT`
-- `document_versions.storage_path` stores an opaque URI like `local://documents/<uuid>.pdf`
-
-Prepared for later:
-
-- `STORAGE_BACKEND=s3`
-- `STORAGE_BUCKET`
-- `STORAGE_KEY_PREFIX`
-
-The S3-oriented settings are present so the persistence model and service boundaries are ready, even though actual S3 reads/writes are not implemented yet.
-
-## Secret Handling
-
-The runtime settings now treat `GEMINI_API_KEY` as a secret value.
-
-Current safeguards:
-
-- the Gemini key is required in `production`
-- `STORAGE_BUCKET` is required when `STORAGE_BACKEND=s3`
-- the application no longer passes the secret around as a plain config string
-
-## Runtime Observability
-
-The current runtime path now includes:
-
-- `/livez` for lightweight process liveness
-- `/readyz` for database + Redis readiness
-- request logging with request IDs and latency
-- Docker health checks for API, worker, PostgreSQL, and Redis
-- periodic stale-session cleanup in the worker process
-
-Request logs now include:
-
-- request ID
-- method
-- path
-- status code
-- duration in milliseconds
-
-You can control log verbosity with:
-
-- `LOG_LEVEL`
-
-## Session Runtime Controls
-
-The current temporary-session product also relies on a few runtime guardrails:
-
-- `MAX_UPLOAD_SIZE_BYTES`
-- `MAX_PDF_PAGES`
-- `MAX_SESSION_QUESTION_CHARS`
-- `SESSION_INACTIVITY_TIMEOUT_MINUTES`
-- `SESSION_CLEANUP_INTERVAL_SECONDS`
-
-These help keep the temporary-session backend bounded and prevent the frontend from waiting indefinitely on invalid or over-large inputs.
-
-## Startup Scripts
+Current startup behavior:
 
 - `docker/api/start.sh`
 - `docker/worker/start.sh`
 
-Both currently run:
+Both run:
 
 1. `alembic upgrade head`
-2. the service entry command
+2. the service process
 
-This keeps a fresh deployment from starting against an outdated schema.
+Health checks are present for:
 
-## Current Limits
+- API
+- worker
+- PostgreSQL
+- Redis
 
-This is a solid deployment baseline, but not the final production story yet.
+## Vercel Frontend
 
-Still missing or intentionally simple:
+The frontend can stay on Vercel for:
 
-- secrets manager integration
-- object storage such as S3 or GCS
-- separate migration job instead of running migrations in both containers
-- TLS / reverse proxy configuration
-- autoscaling or multiple worker replicas
+- a stable HTTPS URL
+- simpler static hosting
+- easier UI deploys
+
+The only required frontend runtime variable is:
+
+- `VITE_API_BASE_URL`
+
+Point it at the EC2 backend instead of FastAPI Cloud once the EC2 stack is live.
+
+## What This Replaces
+
+This EC2 Compose path is now the preferred runtime instead of:
+
+- FastAPI Cloud backend
+- EC2 worker
+- managed shared credentials across platforms
+
+That earlier split setup is still useful for learning, but it is no longer the easiest production path for the current codebase.
+
+## Still Missing
+
+This is a practical deployment baseline, not the final production architecture.
+
+Still intentionally simple:
+
+- no reverse proxy yet
+- no TLS on the EC2 backend yet
+- no custom domain on the backend yet
+- no S3-compatible shared object storage yet
+- no backups automation for the self-hosted PostgreSQL volume
+- no rolling deployments or multiple replicas
