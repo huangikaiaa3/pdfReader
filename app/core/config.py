@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     app_name: str = "pdfReader"
     environment: str = "local"
+    app_database_url: str | None = None
     database_url: str
     redis_url: str
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
@@ -45,6 +46,8 @@ class Settings(BaseSettings):
     def validate_runtime_settings(self) -> "Settings":
         """Validate environment combinations that matter in deployed runtimes."""
 
+        if self.app_database_url:
+            self.database_url = self.app_database_url
         if self.database_url.startswith("postgres://"):
             self.database_url = self.database_url.replace("postgres://", "postgresql+psycopg://", 1)
         elif self.database_url.startswith("postgresql://") and "+psycopg" not in self.database_url.split("://", 1)[0]:
