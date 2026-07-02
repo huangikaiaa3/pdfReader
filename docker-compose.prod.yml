@@ -13,6 +13,7 @@ services:
   api:
     build:
       context: .
+    user: "0:0"
     command: ["sh", "/app/docker/api/start.sh"]
     env_file:
       - .env
@@ -39,6 +40,7 @@ services:
   worker:
     build:
       context: .
+    user: "0:0"
     command: ["sh", "/app/docker/worker/start.sh"]
     env_file:
       - .env
