@@ -433,7 +433,7 @@ export default function App() {
         </header>
 
         {appError ? <div className="toast error-banner">{appError}</div> : null}
-        {successMessage ? <div className="toast success-banner">{successMessage}</div> : null}
+        {successMessage ? <div className="status-note">{successMessage}</div> : null}
 
         {!session ? (
           <section className="empty-state">
