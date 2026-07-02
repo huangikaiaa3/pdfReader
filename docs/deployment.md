@@ -4,8 +4,8 @@
 
 The current preferred deployment shape is:
 
-- frontend on Vercel
-- backend API on one EC2 instance
+- frontend on the same EC2 instance
+- backend API on the same EC2 instance
 - ingestion worker on the same EC2 instance
 - PostgreSQL on the same EC2 instance
 - Redis on the same EC2 instance
@@ -18,7 +18,7 @@ This keeps the whole backend stack in one Docker Compose runtime and avoids the 
 
 That split deployment failed because uploaded PDFs were written to the backend container filesystem, while the worker was trying to read them from a different machine.
 
-## Why EC2 Compose Is Simpler For This App
+## Why Single-Origin EC2 Is Simpler For This App
 
 This app currently relies on local filesystem storage for uploaded PDFs:
 
@@ -33,6 +33,12 @@ When the API and worker share one EC2 host and one Docker volume:
 
 For the current temporary PDF chat product, this is the simplest reliable runtime shape.
 
+It also avoids the browser mixed-content issue we hit when:
+
+- frontend was served over `https`
+- backend was served over plain `http`
+- browser blocked the frontend's API calls
+
 ## Compose File
 
 Use:
@@ -41,6 +47,7 @@ Use:
 
 This stack runs:
 
+- `frontend`
 - `api`
 - `worker`
 - `postgres`
@@ -68,7 +75,7 @@ Important values:
 - `STORAGE_BACKEND=local`
 - `STORAGE_ROOT=/app/storage`
 - `GEMINI_API_KEY=<your key>`
-- `CORS_ALLOWED_ORIGINS=https://pdf-reader-virid.vercel.app`
+- `CORS_ALLOWED_ORIGINS=http://<ec2-public-ip>`
 - `POSTGRES_PASSWORD=<same password used by the postgres container>`
 
 ## EC2 Startup Command
@@ -79,15 +86,16 @@ docker compose -f docker-compose.prod.yml up --build -d
 
 ## Expected Public Entry Point
 
-With the current compose file, the API is published on:
+With the current compose file, the public app is published on:
 
-- `http://<ec2-public-ip>:8000`
+- `http://<ec2-public-ip>`
 
-The frontend can point `VITE_API_BASE_URL` at that address.
+The frontend is served by nginx, and nginx proxies API traffic to the internal FastAPI service.
 
-Example:
+Examples:
 
-- `VITE_API_BASE_URL=http://51.20.107.183:8000`
+- `http://51.20.107.183/`
+- `http://51.20.107.183/health`
 
 ## Storage Behavior
 
@@ -120,26 +128,25 @@ Health checks are present for:
 - PostgreSQL
 - Redis
 
-## Vercel Frontend
+## Frontend Routing
 
-The frontend can stay on Vercel for:
+The frontend is built into a dedicated nginx container.
 
-- a stable HTTPS URL
-- simpler static hosting
-- easier UI deploys
+Current routing behavior:
 
-The only required frontend runtime variable is:
+- `/` serves the React app
+- `/auth/*` proxies to the FastAPI API container
+- `/sessions/*` proxies to the FastAPI API container
+- `/health`, `/livez`, `/readyz` proxy to the FastAPI API container
 
-- `VITE_API_BASE_URL`
-
-Point it at the EC2 backend instead of FastAPI Cloud once the EC2 stack is live.
+This gives the browser one origin and removes the cross-origin / mixed-content problem.
 
 ## What This Replaces
 
 This EC2 Compose path is now the preferred runtime instead of:
 
-- FastAPI Cloud backend
-- EC2 worker
+- Vercel frontend + plain HTTP EC2 backend
+- FastAPI Cloud backend + EC2 worker
 - managed shared credentials across platforms
 
 That earlier split setup is still useful for learning, but it is no longer the easiest production path for the current codebase.

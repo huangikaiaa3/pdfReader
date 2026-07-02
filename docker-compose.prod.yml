@@ -1,6 +1,15 @@
-version: "3.9"
-
 services:
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -12,8 +21,6 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/pdfreader
       REDIS_URL: redis://redis:6379/0
       STORAGE_ROOT: /app/storage
-    ports:
-      - "8000:8000"
     volumes:
       - document_storage:/app/storage
     depends_on:

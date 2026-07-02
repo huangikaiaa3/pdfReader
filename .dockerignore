@@ -9,3 +9,5 @@ __pycache__
 .DS_Store
 .env
 storage
+frontend/node_modules
+frontend/dist

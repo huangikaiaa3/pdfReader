@@ -24,8 +24,8 @@ Expected environment variable:
 
 Default backend target:
 
-- `http://127.0.0.1:8000`
+- same origin (`""`)
 
-For the EC2 deployment path, point `VITE_API_BASE_URL` at the public backend URL for the EC2 stack, for example:
+For a separate frontend/backend setup, point `VITE_API_BASE_URL` at the backend URL explicitly, for example:
 
 - `http://<ec2-public-ip>:8000`
