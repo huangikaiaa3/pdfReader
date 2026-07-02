@@ -104,6 +104,7 @@ class DocumentVersion(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     document: Mapped[Document] = relationship(back_populates="versions")
+    profile: Mapped["DocumentProfile | None"] = relationship(back_populates="document_version", cascade="all, delete-orphan", uselist=False)
     pages: Mapped[list["DocumentPage"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
     chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
@@ -130,6 +131,24 @@ class DocumentPage(Base):
     __table_args__ = (
         sa.UniqueConstraint("document_version_id", "page_number", name="uq_document_pages_version_page"),
     )
+
+
+class DocumentProfile(Base):
+    """Document-level semantic profile used for broad document questions."""
+
+    __tablename__ = "document_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    document_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_versions.id"), nullable=False, unique=True, index=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    document_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    primary_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    key_dates_json: Mapped[list[str]] = mapped_column(sa.JSON(), nullable=False, default=list)
+    key_addresses_json: Mapped[list[str]] = mapped_column(sa.JSON(), nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    document_version: Mapped[DocumentVersion] = relationship(back_populates="profile")
 
 
 class DocumentChunk(Base):

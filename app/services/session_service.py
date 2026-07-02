@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import Document, DocumentVersion, IngestionJob, Session as ChatSession, SessionMessage, User
 from app.schemas.session import SessionAskResponse, SessionDetailResponse, SessionEndResponse, SessionMessageResponse
-from app.services.qa_service import ask_document_question
+from app.services.qa_service import answer_user_question
 from app.services.queue_service import enqueue_ingestion_job
 from app.services.storage_service import delete_pdf, get_document_storage
 
@@ -124,7 +124,7 @@ def ask_session_question(db: Session, session_id, question: str, top_k: int, cur
     db.refresh(user_message)
 
     try:
-        answer_response = ask_document_question(
+        answer_response = answer_user_question(
             db=db,
             document_version_id=session.document_version_id,
             question=question,

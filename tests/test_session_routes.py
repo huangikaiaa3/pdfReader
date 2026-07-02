@@ -162,7 +162,7 @@ def test_ask_session_question_route_persists_messages(client, db_session, curren
             ],
         )
 
-    monkeypatch.setattr(session_service, "ask_document_question", fake_answer_question)
+    monkeypatch.setattr(session_service, "answer_user_question", fake_answer_question)
 
     response = client.post(
         f"/sessions/{session.id}/messages",
@@ -201,7 +201,7 @@ def test_ask_session_question_route_returns_clean_error_when_ai_fails(client, db
     session = _create_session(db_session, current_user, status="ready")
     monkeypatch.setattr(
         session_service,
-        "ask_document_question",
+        "answer_user_question",
         lambda db, document_version_id, question, top_k, current_user: (_ for _ in ()).throw(RuntimeError("Gemini down")),
     )
 

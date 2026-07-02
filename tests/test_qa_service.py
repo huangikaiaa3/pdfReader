@@ -186,3 +186,141 @@ def test_ask_document_question_allows_summary_style_question_with_weaker_match(m
     assert response.answer_status == "answered"
     assert response.answer == "This document is a proof of good standing during tenancy for I-Kai Huang."
     assert len(response.citations) == 2
+
+
+def test_answer_user_question_returns_out_of_scope_for_non_document_intent(monkeypatch):
+    document_version_id = uuid4()
+    current_user = SimpleNamespace(id=uuid4())
+
+    monkeypatch.setattr(qa_service, "classify_question_intent", lambda question: "non_document")
+
+    response = qa_service.answer_user_question(
+        db=None,
+        document_version_id=document_version_id,
+        question="hi",
+        top_k=5,
+        current_user=current_user,
+    )
+
+    assert response.answer_status == "out_of_scope"
+    assert response.citations == []
+    assert response.matches == []
+
+
+def test_answer_user_question_uses_document_profile_for_document_level_question(monkeypatch):
+    document_version_id = uuid4()
+    current_user = SimpleNamespace(id=uuid4())
+    db = SimpleNamespace()
+    profile = SimpleNamespace(
+        summary="This document confirms good residency standing.",
+        document_type="good_standing_letter",
+        primary_subject="I-Kai Huang",
+        key_dates_json=["01/20/2023", "01/31/2024"],
+        key_addresses_json=["485 Marin Blvd. Apt. 1035 Jersey City, NJ 07302"],
+    )
+    document_version = SimpleNamespace(id=document_version_id)
+
+    class FakeQuery:
+        def __init__(self, value):
+            self.value = value
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def first(self):
+            return self.value
+
+    def fake_query(model):
+        if model is qa_service.DocumentVersion:
+            return FakeQuery(document_version)
+        if model is qa_service.DocumentProfile:
+            return FakeQuery(profile)
+        raise AssertionError("Unexpected model queried")
+
+    db.query = fake_query
+
+    monkeypatch.setattr(qa_service, "classify_question_intent", lambda question: "document_question")
+    monkeypatch.setattr(qa_service, "classify_document_question_scope", lambda question: "document_level")
+    monkeypatch.setattr(
+        qa_service,
+        "answer_document_level_question",
+        lambda document_version_id, question, profile: qa_service.DocumentAskResponse(
+            document_version_id=document_version_id,
+            question=question,
+            answer_status="answered",
+            answer="This document confirms good residency standing for I-Kai Huang.",
+            citations=[],
+            matches=[],
+        ),
+    )
+
+    response = qa_service.answer_user_question(
+        db=db,
+        document_version_id=document_version_id,
+        question="What is this document about?",
+        top_k=5,
+        current_user=current_user,
+    )
+
+    assert response.answer_status == "answered"
+    assert response.answer == "This document confirms good residency standing for I-Kai Huang."
+
+
+def test_answer_user_question_marks_profile_no_answer_as_insufficient_context(monkeypatch):
+    document_version_id = uuid4()
+    current_user = SimpleNamespace(id=uuid4())
+    db = SimpleNamespace()
+    profile = SimpleNamespace(
+        summary="This document confirms good residency standing.",
+        document_type="good_standing_letter",
+        primary_subject="I-Kai Huang",
+        key_dates_json=["01/20/2023", "01/31/2024"],
+        key_addresses_json=["485 Marin Blvd. Apt. 1035 Jersey City, NJ 07302"],
+    )
+    document_version = SimpleNamespace(id=document_version_id)
+
+    class FakeQuery:
+        def __init__(self, value):
+            self.value = value
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def first(self):
+            return self.value
+
+    def fake_query(model):
+        if model is qa_service.DocumentVersion:
+            return FakeQuery(document_version)
+        if model is qa_service.DocumentProfile:
+            return FakeQuery(profile)
+        raise AssertionError("Unexpected model queried")
+
+    db.query = fake_query
+
+    monkeypatch.setattr(qa_service, "classify_question_intent", lambda question: "document_question")
+    monkeypatch.setattr(qa_service, "classify_document_question_scope", lambda question: "document_level")
+    monkeypatch.setattr(
+        qa_service,
+        "answer_document_level_question",
+        lambda document_version_id, question, profile: qa_service.DocumentAskResponse(
+            document_version_id=document_version_id,
+            question=question,
+            answer_status="answered",
+            answer="I could not find enough support in the document to answer that question.",
+            citations=[],
+            matches=[],
+        ),
+    )
+
+    response = qa_service.answer_user_question(
+        db=db,
+        document_version_id=document_version_id,
+        question="Who signed this?",
+        top_k=5,
+        current_user=current_user,
+    )
+
+    assert response.answer_status == "insufficient_context"
+    assert response.citations == []
+    assert response.matches == []

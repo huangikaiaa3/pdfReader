@@ -1,8 +1,60 @@
 from app.core.config import get_settings
-from app.db.models import User
+from app.db.models import DocumentProfile, DocumentVersion, User
 from app.schemas.document import DocumentAskResponse, DocumentCitationResponse
+from app.services.document_profile_service import answer_document_level_question
+from app.services.intent_service import classify_document_question_scope, classify_question_intent
 from app.services.retrieval_service import search_document_chunks
 from app.services.generation_service import answer_question_with_context
+
+
+def answer_user_question(db, document_version_id, question: str, top_k: int, current_user: User) -> DocumentAskResponse:
+    """Route one question between scope blocking, document profile, and retrieval."""
+
+    intent = classify_question_intent(question)
+    if intent == "non_document":
+        return DocumentAskResponse(
+            document_version_id=document_version_id,
+            question=question,
+            answer_status="out_of_scope",
+            answer="I can only help with questions about the uploaded document. Ask me about the PDF, and I'll answer from its contents when I can.",
+            citations=[],
+            matches=[],
+        )
+
+    scope = classify_document_question_scope(question)
+    if scope == "document_level":
+        document_version = db.query(DocumentVersion).filter(DocumentVersion.id == document_version_id).first()
+        if document_version is None:
+            raise ValueError("Document version not found.")
+        profile = db.query(DocumentProfile).filter(DocumentProfile.document_version_id == document_version_id).first()
+        if profile is None:
+            return DocumentAskResponse(
+                document_version_id=document_version_id,
+                question=question,
+                answer_status="insufficient_context",
+                answer="I could not find enough support in the document to answer that question.",
+                citations=[],
+                matches=[],
+            )
+        response = answer_document_level_question(document_version_id=document_version_id, question=question, profile=profile)
+        if _is_no_answer_response(response.answer):
+            return DocumentAskResponse(
+                document_version_id=document_version_id,
+                question=question,
+                answer_status="insufficient_context",
+                answer=response.answer,
+                citations=[],
+                matches=[],
+            )
+        return response
+
+    return ask_document_question(
+        db=db,
+        document_version_id=document_version_id,
+        question=question,
+        top_k=top_k,
+        current_user=current_user,
+    )
 
 
 def ask_document_question(db, document_version_id, question: str, top_k: int, current_user: User) -> DocumentAskResponse:

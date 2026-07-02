@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentVersion, IngestionJob
+from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentProfile, DocumentVersion, IngestionJob
 from app.services import ingestion_service
 
 
@@ -29,6 +29,14 @@ def _create_document_version(db_session, current_user, pipeline_status: str = "p
 def test_reset_stage_artifacts_only_removes_stage_outputs(db_session, current_user):
     document_version = _create_document_version(db_session, current_user)
     page = DocumentPage(document_version_id=document_version.id, page_number=1, text="Page one", char_count=8)
+    profile = DocumentProfile(
+        document_version_id=document_version.id,
+        summary="Document summary",
+        document_type="letter",
+        primary_subject="Test User",
+        key_dates_json=["2026-07-02"],
+        key_addresses_json=["123 Main St"],
+    )
     chunk = DocumentChunk(
         document_version_id=document_version.id,
         chunk_index=0,
@@ -38,6 +46,7 @@ def test_reset_stage_artifacts_only_removes_stage_outputs(db_session, current_us
         char_count=9,
     )
     db_session.add(page)
+    db_session.add(profile)
     db_session.add(chunk)
     db_session.commit()
 
@@ -53,6 +62,7 @@ def test_reset_stage_artifacts_only_removes_stage_outputs(db_session, current_us
     ingestion_service._reset_stage_artifacts(db_session, document_version, "build_embeddings")
     db_session.commit()
     assert db_session.query(DocumentPage).count() == 1
+    assert db_session.query(DocumentProfile).count() == 1
     assert db_session.query(DocumentChunk).count() == 1
     assert db_session.query(ChunkEmbedding).count() == 0
 
@@ -68,6 +78,34 @@ def test_reset_stage_artifacts_only_removes_stage_outputs(db_session, current_us
     ingestion_service._reset_stage_artifacts(db_session, document_version, "chunk_text")
     db_session.commit()
     assert db_session.query(DocumentPage).count() == 1
+    assert db_session.query(DocumentProfile).count() == 1
+    assert db_session.query(DocumentChunk).count() == 0
+    assert db_session.query(ChunkEmbedding).count() == 0
+
+    chunk = DocumentChunk(
+        document_version_id=document_version.id,
+        chunk_index=0,
+        start_page_number=1,
+        end_page_number=1,
+        text="Chunk one",
+        char_count=9,
+    )
+    db_session.add(chunk)
+    db_session.commit()
+
+    embedding = ChunkEmbedding(
+        document_chunk_id=chunk.id,
+        embedding_model="gemini-embedding-2",
+        dimensions=768,
+        vector=[0.0] * 768,
+    )
+    db_session.add(embedding)
+    db_session.commit()
+
+    ingestion_service._reset_stage_artifacts(db_session, document_version, "extract_text")
+    db_session.commit()
+    assert db_session.query(DocumentPage).count() == 0
+    assert db_session.query(DocumentProfile).count() == 0
     assert db_session.query(DocumentChunk).count() == 0
     assert db_session.query(ChunkEmbedding).count() == 0
 
@@ -309,3 +347,13 @@ def test_process_extraction_job_fails_when_source_pdf_is_missing(db_session, mon
     assert refreshed_job.status == "failed"
     assert refreshed_job.error_message == "Source PDF is no longer available for this session."
     assert refreshed_version.pipeline_status == "failed"
+
+
+def test_determine_next_job_type_requires_profile_before_advancing(db_session, current_user):
+    document_version = _create_document_version(db_session, current_user, pipeline_status="extracting")
+    db_session.add(DocumentPage(document_version_id=document_version.id, page_number=1, text="Page one", char_count=8))
+    db_session.commit()
+
+    next_job_type = ingestion_service._determine_next_job_type(db_session, document_version)
+
+    assert next_job_type == "extract_text"

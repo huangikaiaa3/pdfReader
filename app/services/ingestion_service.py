@@ -10,11 +10,12 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentVersion, IngestionJob, User
+from app.db.models import ChunkEmbedding, Document, DocumentChunk, DocumentPage, DocumentProfile, DocumentVersion, IngestionJob, User
 from app.db.session import SessionLocal
 from app.schemas.document import DocumentRecoveryResponse
 from app.services.document_service import build_recovery_response
 from app.services.chunking_service import build_document_chunks
+from app.services.document_profile_service import create_document_profile
 from app.services.embedding_service import build_chunk_embedding_payloads
 from app.services.extraction_service import extract_pdf_text
 from app.services.queue_service import enqueue_ingestion_job, publish_ingestion_event
@@ -100,7 +101,9 @@ def process_extraction_job(db, ingestion_job: IngestionJob) -> None:
         document_version.page_count = extraction_result["page_count"]
 
         if extraction_result["is_readable"]:
+            page_texts: list[str] = []
             for page in extraction_result["pages"]:
+                page_texts.append(page["text"])
                 document_page = DocumentPage(
                     document_version_id=document_version.id,
                     page_number=page["page_number"],
@@ -108,6 +111,7 @@ def process_extraction_job(db, ingestion_job: IngestionJob) -> None:
                     char_count=page["char_count"],
                 )
                 db.add(document_page)
+            db.add(create_document_profile(document_version=document_version, page_texts=page_texts))
             next_job = _create_next_job(db, document_version.id, "chunk_text")
             document_version.pipeline_status = "chunking"
             touch_session_activity(db, document_version.id, status="ingesting", failure_message=None)
@@ -392,6 +396,9 @@ def _reset_stage_artifacts(db, document_version: DocumentVersion, job_type: str)
     )
 
     if job_type == "extract_text":
+        db.query(DocumentProfile).filter(DocumentProfile.document_version_id == document_version.id).delete(
+            synchronize_session=False
+        )
         db.query(ChunkEmbedding).filter(ChunkEmbedding.document_chunk_id.in_(document_chunk_ids)).delete(
             synchronize_session=False
         )
@@ -438,6 +445,10 @@ def _determine_next_job_type(db, document_version: DocumentVersion) -> str | Non
 
     page_count = db.query(DocumentPage).filter(DocumentPage.document_version_id == document_version.id).count()
     if page_count == 0:
+        return "extract_text"
+
+    profile = db.query(DocumentProfile).filter(DocumentProfile.document_version_id == document_version.id).first()
+    if profile is None:
         return "extract_text"
 
     chunks = (
